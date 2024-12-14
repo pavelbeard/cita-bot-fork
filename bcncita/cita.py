@@ -66,7 +66,7 @@ class OperationType(str, Enum):
     TOMA_HUELLAS = "4010"  # POLICIA-TOMA DE HUELLAS (EXPEDICIÓN DE TARJETA) Y RENOVACIÓN DE TARJETA DE LARGA DURACIÓN
     ASIGNACION_NIE = "4031"  # Asignación de N.I.E.
     FINGERP_RINT = "4047"  # POLICÍA-EXPEDICIÓN DE TARJETAS CUYA AUTORIZACIÓN RESUELVE LA DIRECCIÓN GENERAL DE MIGRACIONES
-
+    RENOVACION_ASILO = "4067"  # POLICIA- EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO
 
 class Office(str, Enum):
     # Barcelona
@@ -101,6 +101,21 @@ class Office(str, Enum):
     OUE_SANTA_CRUZ = "1"  # 1 OUE SANTA CRUZ DE TENERIFE,  C/LA MARINA, 20
     PLAYA_AMERICAS = "2"  # CNP-Playa de las Américas, Av. de los Pueblos, 2
     PUERTO_CRUZ = "3"  # CNP-Puerto de la Cruz/Los Realejos, Av. del Campo y Llarena, 3
+    
+    # Aicante 
+    ALCOY = "12"
+    ALICANTE_NIE = "15"
+    ALICNTE_TIE = "3"
+    ALICANTE_COMISARIA = "13"
+    ALICANTE_EBANISTERIA = "1"
+    ALTEA = "2"
+    BENIDORM = "10"
+    BENIDORM_TIE = "4"
+    DENIA = "11"
+    ELDA = "9"
+    ORIHUELA = "7"
+    ORIHUELA_COSTA = "14"
+    TORREVIEJA = "6"
 
 
 class Province(str, Enum):
@@ -368,6 +383,27 @@ def solicitud_asilo_step2(driver: webdriver, context: CustomerProfile):
     select = Select(driver.find_element(By.ID, "txtPaisNac"))
     select.select_by_visible_text(context.country)
 
+    return True
+
+def renovacion_de_asilo_step2(driver: webdriver, context: CustomerProfile):
+    try:
+        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+    except TimeoutException:
+        logging.error("Timed out waiting for form to load")
+        return None
+    
+    # Select doc type
+    if context.doc_type == DocType.NIE:
+        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+        
+    # Enter doc number and name
+    element = driver.find_element(By.ID, "txtIdCitado")
+    element.send_keys(context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth)
+    
+    # Select country
+    select = Select(driver.find_element(By.ID, "txtPaisNac"))
+    select.select_by_visible_text(context.country)
+    
     return True
 
 
@@ -820,6 +856,8 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fa
         success = recogida_de_tarjeta_step2(driver, context)
     elif context.operation_code == OperationType.SOLICITUD_ASILO:
         success = solicitud_asilo_step2(driver, context)
+    elif context.operation_code == OperationType.RENOVACION_ASILO:
+        success = renovacion_de_asilo_step2(driver, context)
     elif context.operation_code == OperationType.BREXIT:
         success = brexit_step2(driver, context)
     elif context.operation_code == OperationType.CARTA_INVITACION:
