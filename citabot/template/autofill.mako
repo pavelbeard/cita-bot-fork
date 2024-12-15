@@ -1,4 +1,4 @@
-<%! from bcncita import DocType, OperationType %>
+<%! from citabot import DocType, OperationType %>
 // Copy the whole script to Autofill for Chrome (JavaScript type)
 // and open the fast_forward_url in browser
 const fast_forward_url = "https://sede.administracionespublicas.gob.es/icpplustieb/acInfo?p=${ctx.province.value}&tramite=${ctx.operation_code.value}";

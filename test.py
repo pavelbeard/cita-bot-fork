@@ -2,7 +2,7 @@ import logging
 import os
 import unittest
 
-from bcncita import (
+from citabot import (
     CustomerProfile,
     DocType,
     Office,

@@ -9,3 +9,4 @@ chrome_profiles/
 .DS_Store
 chromedriver
 .venv
+data.json

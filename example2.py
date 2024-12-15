@@ -1,7 +1,7 @@
 import os
 import sys
 
-from bcncita import CustomerProfile, DocType, Office, OperationType, Province, try_cita
+from citabot import CustomerProfile, DocType, Office, OperationType, Province, try_cita
 
 if __name__ == "__main__":
     customer = CustomerProfile(

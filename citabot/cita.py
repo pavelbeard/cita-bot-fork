@@ -1,3 +1,5 @@
+import importlib
+import importlib.util
 import io
 import json
 import logging
@@ -25,6 +27,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.wait import WebDriverWait
+from undetected_chromedriver import Chrome, ChromeOptions
+from fake_useragent import UserAgent
 
 from .speaker import new_speaker
 
@@ -58,15 +62,22 @@ class OperationType(str, Enum):
     BREXIT = "4094"  # POLICÍA-EXP.TARJETA ASOCIADA AL ACUERDO DE RETIRADA CIUDADANOS BRITÁNICOS Y SUS FAMILIARES (BREXIT)
     CARTA_INVITACION = "4037"  # POLICIA-CARTA DE INVITACIÓN
     CERTIFICADOS_NIE = "4096"  # POLICIA-CERTIFICADOS Y ASIGNACION NIE
-    CERTIFICADOS_NIE_NO_COMUN = "4079"  # POLICIA-CERTIFICADOS Y ASIGNACION NIE (NO COMUNITARIOS)
+    CERTIFICADOS_NIE_NO_COMUN = (
+        "4079"  # POLICIA-CERTIFICADOS Y ASIGNACION NIE (NO COMUNITARIOS)
+    )
     CERTIFICADOS_RESIDENCIA = "4049"  # POLICIA-CERTIFICADOS (DE RESIDENCIA, DE NO RESIDENCIA Y DE CONCORDANCIA) #fmt: off
     CERTIFICADOS_UE = "4038"  # POLICIA-CERTIFICADO DE REGISTRO DE CIUDADANO DE LA U.E.
-    RECOGIDA_DE_TARJETA = "4036"  # POLICIA - RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)
+    RECOGIDA_DE_TARJETA = (
+        "4036"  # POLICIA - RECOGIDA DE TARJETA DE IDENTIDAD DE EXTRANJERO (TIE)
+    )
     SOLICITUD_ASILO = "4078"  # POLICIA - SOLICITUD ASILO
     TOMA_HUELLAS = "4010"  # POLICIA-TOMA DE HUELLAS (EXPEDICIÓN DE TARJETA) Y RENOVACIÓN DE TARJETA DE LARGA DURACIÓN
     ASIGNACION_NIE = "4031"  # Asignación de N.I.E.
     FINGERP_RINT = "4047"  # POLICÍA-EXPEDICIÓN DE TARJETAS CUYA AUTORIZACIÓN RESUELVE LA DIRECCIÓN GENERAL DE MIGRACIONES
-    RENOVACION_ASILO = "4067"  # POLICIA- EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO
+    RENOVACION_ASILO = (
+        "4067"  # POLICIA- EXPEDICIÓN/RENOVACIÓN DE DOCUMENTOS DE SOLICITANTES DE ASILO
+    )
+
 
 class Office(str, Enum):
     # Barcelona
@@ -78,7 +89,9 @@ class Office(str, Enum):
     CORNELLA = "21"  # CNP-COMISARIA CORNELLA DE LLOBREGAT, AV. SANT ILDEFONS, S/N
     ELPRAT = "23"  # CNP-COMISARIA EL PRAT DE LLOBREGAT, CENTRE (4)
     GRANOLLERS = "28"  # CNP-COMISARIA GRANOLLERS, RICOMA (65)
-    HOSPITALET = "17"  # CNP-COMISARIA L`HOSPITALET DE LLOBREGAT, Rbla. Just Oliveres (43)
+    HOSPITALET = (
+        "17"  # CNP-COMISARIA L`HOSPITALET DE LLOBREGAT, Rbla. Just Oliveres (43)
+    )
     IGUALADA = "26"  # CNP-COMISARIA IGUALADA, PRAT DE LA RIBA (13)
     MANRESA = "38"  # CNP-COMISARIA MANRESA, SOLER I MARCH (5)
     MATARO = "27"  # CNP-COMISARIA MATARO, AV. GATASSA (15)
@@ -94,28 +107,34 @@ class Office(str, Enum):
     TERRASSA = "36"  # CNP-COMISARIA TERRASSA, BALDRICH (13)
     VIC = "37"  # CNP-COMISARIA VIC, BISBE MORGADES (4)
     VILADECANS = "25"  # CNP-COMISARIA VILADECANS, AVDA. BALLESTER (2)
-    VILAFRANCA = "46"  # CNP COMISARIA VILAFRANCA DEL PENEDES, Avinguda Ronda del Mar, 109
+    VILAFRANCA = (
+        "46"  # CNP COMISARIA VILAFRANCA DEL PENEDES, Avinguda Ronda del Mar, 109
+    )
     VILANOVA = "39"  # CNP-COMISARIA VILANOVA I LA GELTRU, VAPOR (19)
 
     # Tenerife
     OUE_SANTA_CRUZ = "1"  # 1 OUE SANTA CRUZ DE TENERIFE,  C/LA MARINA, 20
     PLAYA_AMERICAS = "2"  # CNP-Playa de las Américas, Av. de los Pueblos, 2
     PUERTO_CRUZ = "3"  # CNP-Puerto de la Cruz/Los Realejos, Av. del Campo y Llarena, 3
-    
-    # Aicante 
-    ALCOY = "12"
-    ALICANTE_NIE = "15"
-    ALICNTE_TIE = "3"
-    ALICANTE_COMISARIA = "13"
-    ALICANTE_EBANISTERIA = "1"
-    ALTEA = "2"
-    BENIDORM = "10"
-    BENIDORM_TIE = "4"
-    DENIA = "11"
-    ELDA = "9"
-    ORIHUELA = "7"
-    ORIHUELA_COSTA = "14"
-    TORREVIEJA = "6"
+
+    # Aicante
+    ALCOY = "12"  # CNP Alcoy, Placeta Les Xiques, S/N, Alcoy
+    ALICANTE_NIE = "15"  # CNP Alicante NIE, Ebanistería, 4-6, Alicante
+    ALICNTE_TIE = "3"  # CNP Alicante TIE, Campo de Mirra, 6, Alicante
+    ALICANTE_COMISARIA = (
+        "13"  # CNP Comisaría Provincial, C/ Isabel la Católica, 25, Alicante
+    )
+    ALICANTE_EBANISTERIA = "1"  # CNP Ebanistería, Avda Marquesado, 53, Denia
+    ALTEA = "2"  # OEX ALTEA, SAN ISIDRO LABRADOR, 1, ALTEA
+    BENIDORM = "10"  # CNP Benidorm, Apolo XI, 36, Benidorm
+    BENIDORM_TIE = "4"  # CNP Benidorm TIE, Callosa D`Ensarria, 2, Benidorm
+    DENIA = "11"  # CNP Denia, Avda Marquesado, 53, Denia
+    ELDA = "9"  # CNP Elda, Lamberto Amat, 26, Elda
+    ORIHUELA = "7"  # CNP Orihuela, Sol, 34, Orihuela
+    ORIHUELA_COSTA = (
+        "14"  # CNP Orihuela Costa, C/ Flores (Centro de Emergencias), 5, Orihuela Costa
+    )
+    TORREVIEJA = "6"  # CNP Torrevieja, Arquitecto Larramendi, 3, Torrevieja
 
 
 class Province(str, Enum):
@@ -181,7 +200,7 @@ class CustomerProfile:
     phone: str
     email: str
     province: Province = Province.BARCELONA
-    operation_code: OperationType = OperationType.TOMA_HUELLAS
+    operation_code: OperationType = OperationType.RENOVACION_ASILO
     country: str = "RUSIA"
     year_of_birth: Optional[str] = None
     offices: Optional[list] = field(default_factory=list)
@@ -212,24 +231,30 @@ class CustomerProfile:
 
     def __post_init__(self):
         if self.operation_code == OperationType.RECOGIDA_DE_TARJETA:
-            assert len(self.offices) == 1, "Indicate the office where you need to pick up the card"
+            assert (
+                len(self.offices) == 1
+            ), "Indicate the office where you need to pick up the card"
 
 
 def init_wedriver(context: CustomerProfile):
-    options = webdriver.ChromeOptions()
+    options = ChromeOptions()
 
     if context.chrome_profile_path:
         options.add_argument(f"user-data-dir={context.chrome_profile_path}")
     if context.chrome_profile_name:
         options.add_argument(f"profile-directory={context.chrome_profile_name}")
 
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36"
-
-    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
-    options.add_experimental_option("useAutomationExtension", False)
+    ua = UserAgent()
+    
+    # options.add_experimental_option(
+        # "excludeSwitches", ["enable-automation", "enable-logging"]
+    # )
+    # options.add_experimental_option("useAutomationExtension", False)
+    
     options.add_argument("--ignore-certificate-errors")
     options.add_argument("--ignore-ssl-errors")
     options.add_argument("--disable-gpu")
+    options.add_argument(f"--user-agent={ua.getRandom}")
 
     settings = {
         "recentDestinations": [{"id": "Save as PDF", "origin": "local", "account": ""}],
@@ -243,9 +268,16 @@ def init_wedriver(context: CustomerProfile):
     options.add_experimental_option("prefs", prefs)
     options.add_argument("--kiosk-printing")
 
-    browser = webdriver.Chrome(context.chrome_driver_path, options=options)
-    browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    browser.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": ua})
+    browser = Chrome(
+        # driver_executable_path=context.chrome_driver_path,
+        options=options,
+        headless=True,
+        use_subprocess=False,
+    )
+    browser.execute_script(
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    )
+    # browser.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": ua})
 
     return browser
 
@@ -257,7 +289,9 @@ def try_cita(context: CustomerProfile, cycles: int = CYCLES):
 
 def start_with(driver: webdriver, context: CustomerProfile, cycles: int = CYCLES):
     logging.basicConfig(
-        format="%(asctime)s - %(message)s", level=logging.INFO, **context.log_settings  # type: ignore
+        format="%(asctime)s - %(message)s",
+        level=logging.INFO,
+        **context.log_settings,  # type: ignore
     )
     if context.sms_webhook_token:
         delete_message(context.sms_webhook_token)
@@ -286,12 +320,8 @@ def start_with(driver: webdriver, context: CustomerProfile, cycles: int = CYCLES
     ]:
         operation_param = "tramiteGrupo[0]"
 
-    fast_forward_url = "https://icp.administracionelectronica.gob.es/{}/citar?p={}".format(
-        operation_category, context.province
-    )
-    fast_forward_url2 = "https://icp.administracionelectronica.gob.es/{}/acInfo?{}={}".format(
-        operation_category, operation_param, context.operation_code
-    )
+    fast_forward_url = f"https://icp.administracionelectronica.gob.es/{operation_category}/citar?p={context.province.value}"
+    fast_forward_url2 = f"https://icp.administracionelectronica.gob.es/{operation_category}/acInfo?{operation_param}={context.operation_code.value}"
 
     success = False
     result = False
@@ -320,7 +350,9 @@ def start_with(driver: webdriver, context: CustomerProfile, cycles: int = CYCLES
 
 def toma_huellas_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtPaisNac")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtPaisNac"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -344,7 +376,9 @@ def toma_huellas_step2(driver: webdriver, context: CustomerProfile):
 
 def recogida_de_tarjeta_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -364,7 +398,9 @@ def recogida_de_tarjeta_step2(driver: webdriver, context: CustomerProfile):
 
 def solicitud_asilo_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -377,7 +413,9 @@ def solicitud_asilo_step2(driver: webdriver, context: CustomerProfile):
 
     # Enter doc number and name
     element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth)
+    element.send_keys(
+        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
+    )
 
     # Select country
     select = Select(driver.find_element(By.ID, "txtPaisNac"))
@@ -385,31 +423,38 @@ def solicitud_asilo_step2(driver: webdriver, context: CustomerProfile):
 
     return True
 
+
 def renovacion_de_asilo_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
-    
+
     # Select doc type
     if context.doc_type == DocType.NIE:
         driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-        
+
     # Enter doc number and name
     element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth)
-    
+    element.send_keys(
+        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
+    )
+
     # Select country
     select = Select(driver.find_element(By.ID, "txtPaisNac"))
     select.select_by_visible_text(context.country)
-    
+
     return True
 
 
 def brexit_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -429,7 +474,9 @@ def brexit_step2(driver: webdriver, context: CustomerProfile):
 
 def carta_invitacion_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -451,7 +498,9 @@ def carta_invitacion_step2(driver: webdriver, context: CustomerProfile):
 
 def certificados_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -473,7 +522,9 @@ def certificados_step2(driver: webdriver, context: CustomerProfile):
 
 def autorizacion_de_regreso_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -493,7 +544,9 @@ def autorizacion_de_regreso_step2(driver: webdriver, context: CustomerProfile):
 
 def asignacion_nie_step2(driver: webdriver, context: CustomerProfile):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "txtIdCitado")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for form to load")
         return None
@@ -506,7 +559,9 @@ def asignacion_nie_step2(driver: webdriver, context: CustomerProfile):
 
     # Enter doc number, name and year of birth
     element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth)
+    element.send_keys(
+        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
+    )
 
     # Select country
     select = Select(driver.find_element(By.ID, "txtPaisNac"))
@@ -524,7 +579,9 @@ def wait_exact_time(driver: webdriver, context: CustomerProfile):
 
 def body_text(driver: webdriver):
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
         return driver.find_element(By.TAG_NAME, "body").text
     except TimeoutException:
         logging.info("Timed out waiting for body to load")
@@ -560,7 +617,9 @@ def process_captcha(driver: webdriver, context: CustomerProfile):
 
 def solve_recaptcha(driver: webdriver, context: CustomerProfile):
     if not context.recaptcha_solver:
-        site_key = driver.find_element(By.ID, "reCAPTCHA_site_key").get_attribute("value")
+        site_key = driver.find_element(By.ID, "reCAPTCHA_site_key").get_attribute(
+            "value"
+        )
         page_action = driver.find_element(By.ID, "action").get_attribute("value")
         logging.info("Anticaptcha: site key: " + site_key)
         logging.info("Anticaptcha: action: " + page_action)
@@ -568,7 +627,9 @@ def solve_recaptcha(driver: webdriver, context: CustomerProfile):
         context.recaptcha_solver = recaptchaV3Proxyless()
         context.recaptcha_solver.set_verbose(1)
         context.recaptcha_solver.set_key(context.anticaptcha_api_key)
-        context.recaptcha_solver.set_website_url("https://icp.administracionelectronica.gob.es")
+        context.recaptcha_solver.set_website_url(
+            "https://icp.administracionelectronica.gob.es"
+        )
         context.recaptcha_solver.set_website_key(site_key)
         context.recaptcha_solver.set_page_action(page_action)
         context.recaptcha_solver.set_min_score(0.9)
@@ -601,7 +662,9 @@ def solve_image_captcha(driver: webdriver, context: CustomerProfile):
         tmp.write(b64decode(img.get_attribute("src").split(",")[1].strip()))
         tmp.close()
 
-        captcha_result = context.image_captcha_solver.solve_and_return_solution(tmp.name)
+        captcha_result = context.image_captcha_solver.solve_and_return_solution(
+            tmp.name
+        )
         if captcha_result != 0:
             logging.info("Anticaptcha: captcha text: " + captcha_result)
             element = driver.find_element(By.ID, "captcha")
@@ -667,7 +730,9 @@ def select_office(driver: webdriver, context: CustomerProfile):
         el = driver.find_element(By.ID, "idSede")
         select = Select(el)
         if context.save_artifacts:
-            offices_path = os.path.join(os.getcwd(), f"offices-{dt.now()}.html".replace(":", "-"))
+            offices_path = os.path.join(
+                os.getcwd(), f"offices-{dt.now()}.html".replace(":", "-")
+            )
             with io.open(offices_path, "w", encoding="utf-8") as f:
                 f.write(el.get_attribute("innerHTML"))
 
@@ -682,7 +747,9 @@ def select_office(driver: webdriver, context: CustomerProfile):
                         return None
 
         for i in range(5):
-            options = list(filter(lambda o: o.get_attribute("value") != "", select.options))
+            options = list(
+                filter(lambda o: o.get_attribute("value") != "", select.options)
+            )
             default_count = len(select.options)
             first_element = 0 if len(options) == default_count else 1
             select.select_by_index(random.randint(first_element, default_count - 1))
@@ -793,7 +860,9 @@ def confirm_appointment(driver: webdriver, context: CustomerProfile):
 
 
 def log_backoff(details):
-    logging.error(f"Unable to load the initial page, backing off {details['wait']:0.1f} seconds")
+    logging.error(
+        f"Unable to load the initial page, backing off {details['wait']:0.1f} seconds"
+    )
 
 
 @backoff.on_exception(
@@ -804,7 +873,9 @@ def log_backoff(details):
     on_backoff=log_backoff,
     logger=None,
 )
-def initial_page(driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2):
+def initial_page(
+    driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2
+):
     if context.first_load:
         driver.delete_all_cookies()
 
@@ -824,24 +895,31 @@ def initial_page(driver: webdriver, context: CustomerProfile, fast_forward_url, 
     time.sleep(5)
 
     resp_text = body_text(driver)
-    if "INTERNET CITA PREVIA" not in resp_text:
+    if "CITA PREVIA EXTRANJERÍA" not in resp_text:
         context.first_load = True
         raise TimeoutException
 
     context.first_load = False
 
 
-def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2):
+def cycle_cita(
+    driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2
+):
     initial_page(driver, context, fast_forward_url, fast_forward_url2)
 
     # 1. Instructions page:
     try:
-        WebDriverWait(driver, DELAY).until(EC.presence_of_element_located((By.ID, "btnEntrar")))
+        WebDriverWait(driver, DELAY).until(
+            EC.presence_of_element_located((By.ID, "btnEntrar"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for Instructions page to load")
         return None
 
-    if os.environ.get("CITA_TEST") and context.operation_code == OperationType.TOMA_HUELLAS:
+    if (
+        os.environ.get("CITA_TEST")
+        and context.operation_code == OperationType.TOMA_HUELLAS
+    ):
         logging.info("Instructions page loaded")
         return True
 
@@ -881,7 +959,9 @@ def cycle_cita(driver: webdriver, context: CustomerProfile, fast_forward_url, fa
     driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
     try:
-        WebDriverWait(driver, 7).until(EC.presence_of_element_located((By.ID, "btnConsultar")))
+        WebDriverWait(driver, 7).until(
+            EC.presence_of_element_located((By.ID, "btnConsultar"))
+        )
     except TimeoutException:
         logging.error("Timed out waiting for Solicitar page to load")
 
@@ -919,9 +999,9 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
             return None
 
         try:
-            driver.find_elements(By.CSS_SELECTOR, "input[type='radio'][name='rdbCita']")[
-                position - 1
-            ].send_keys(Keys.SPACE)
+            driver.find_elements(
+                By.CSS_SELECTOR, "input[type='radio'][name='rdbCita']"
+            )[position - 1].send_keys(Keys.SPACE)
         except Exception as e:
             logging.error(e)
             pass
@@ -954,9 +1034,9 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
                     try:
                         if slots.get(dates[idx]):
                             continue
-                        slot = cell.find_element(By.CSS_SELECTOR, "[id^=HUECO]").get_attribute(
-                            "id"
-                        )
+                        slot = cell.find_element(
+                            By.CSS_SELECTOR, "[id^=HUECO]"
+                        ).get_attribute("id")
                         slots[dates[idx]] = [slot]
                     except Exception:
                         pass
@@ -1000,7 +1080,9 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
                 code = get_code(context)
                 if code:
                     logging.info(f"Received code: {code}")
-                    sms_verification = driver.find_element(By.ID, "txtCodigoVerificacion")
+                    sms_verification = driver.find_element(
+                        By.ID, "txtCodigoVerificacion"
+                    )
                     sms_verification.send_keys(code)
 
             confirm_appointment(driver, context)
@@ -1031,7 +1113,9 @@ def cita_selection(driver: webdriver, context: CustomerProfile):
             context.image_captcha_solver.report_incorrect_image_captcha()
 
         if context.save_artifacts:
-            driver.save_screenshot(f"failed-confirmation-{dt.now()}.png".replace(":", "-"))
+            driver.save_screenshot(
+                f"failed-confirmation-{dt.now()}.png".replace(":", "-")
+            )
         return None
 
 
