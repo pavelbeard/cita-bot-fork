@@ -1,5 +1,4 @@
-import importlib
-import importlib.util
+import base64
 import io
 import json
 import logging
@@ -9,6 +8,7 @@ import re
 import sys
 import tempfile
 import time
+from abc import ABC, abstractmethod
 from base64 import b64decode
 from dataclasses import dataclass, field
 from datetime import datetime as dt
@@ -20,27 +20,27 @@ import backoff
 import requests
 from anticaptchaofficial.imagecaptcha import imagecaptcha
 from anticaptchaofficial.recaptchav3proxyless import recaptchaV3Proxyless
-from selenium import webdriver
+from fake_useragent import UserAgent
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.wait import WebDriverWait
+from telegram import Update
 from undetected_chromedriver import Chrome, ChromeOptions
-from fake_useragent import UserAgent
 
 from .speaker import new_speaker
 
 __all__ = [
-    "try_cita",
-    "start_with",
-    "init_wedriver",
     "CustomerProfile",
     "DocType",
     "OperationType",
     "Office",
     "Province",
+    "ConfirmedCita",
+    "confirmed_cita",
+    "CitaBotBuilder",
 ]
 
 CYCLES = 144
@@ -236,348 +236,463 @@ class CustomerProfile:
             ), "Indicate the office where you need to pick up the card"
 
 
-def init_wedriver(context: CustomerProfile):
-    options = ChromeOptions()
-
-    if context.chrome_profile_path:
-        options.add_argument(f"user-data-dir={context.chrome_profile_path}")
-    if context.chrome_profile_name:
-        options.add_argument(f"profile-directory={context.chrome_profile_name}")
-
-    ua = UserAgent()
-    
-    # options.add_experimental_option(
-        # "excludeSwitches", ["enable-automation", "enable-logging"]
-    # )
-    # options.add_experimental_option("useAutomationExtension", False)
-    
-    options.add_argument("--ignore-certificate-errors")
-    options.add_argument("--ignore-ssl-errors")
-    options.add_argument("--disable-gpu")
-    options.add_argument(f"--user-agent={ua.getRandom}")
-
-    settings = {
-        "recentDestinations": [{"id": "Save as PDF", "origin": "local", "account": ""}],
-        "selectedDestinationId": "Save as PDF",
-        "version": 2,
-    }
-    prefs = {
-        "printing.print_preview_sticky_settings.appState": json.dumps(settings),
-        "download.default_directory": os.getcwd(),
-    }
-    options.add_experimental_option("prefs", prefs)
-    options.add_argument("--kiosk-printing")
-
-    browser = Chrome(
-        # driver_executable_path=context.chrome_driver_path,
-        options=options,
-        headless=True,
-        use_subprocess=False,
-    )
-    browser.execute_script(
-        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-    )
-    # browser.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": ua})
-
-    return browser
+@dataclass
+class ConfirmedCita:
+    code: str  # justificante final
+    screenshot: Optional[str] = None  # screenshot
 
 
-def try_cita(context: CustomerProfile, cycles: int = CYCLES):
-    driver = init_wedriver(context)
-    start_with(driver, context, cycles)
+class ICitaAction(ABC):
+    @abstractmethod
+    def do(self, driver: Chrome, context: CustomerProfile):
+        pass
 
 
-def start_with(driver: webdriver, context: CustomerProfile, cycles: int = CYCLES):
-    logging.basicConfig(
-        format="%(asctime)s - %(message)s",
-        level=logging.INFO,
-        **context.log_settings,  # type: ignore
-    )
-    if context.sms_webhook_token:
-        delete_message(context.sms_webhook_token)
+user_agents = {}
+confirmed_cita = {}
 
-    operation_category = "icpplus"
-    operation_param = "tramiteGrupo[1]"
 
-    if context.province == Province.BARCELONA:
-        operation_category = "icpplustieb"
-        operation_param = "tramiteGrupo[0]"
-    elif context.province in [
-        Province.ALICANTE,
-        Province.ILLES_BALEARS,
-        Province.LAS_PALMAS,
-        Province.S_CRUZ_TENERIFE,
-    ]:
-        operation_category = "icpco"
-    elif context.province == Province.MADRID:
-        operation_category = "icpplustiem"
-    elif context.province == Province.MÁLAGA:
-        operation_category = "icpco"
-        operation_param = "tramiteGrupo[0]"
-    elif context.province in [
-        Province.MELILLA,
-        Province.SEVILLA,
-    ]:
-        operation_param = "tramiteGrupo[0]"
+class DriverBuilder:
+    driver: Chrome
 
-    fast_forward_url = f"https://icp.administracionelectronica.gob.es/{operation_category}/citar?p={context.province.value}"
-    fast_forward_url2 = f"https://icp.administracionelectronica.gob.es/{operation_category}/acInfo?{operation_param}={context.operation_code.value}"
+    def __init__(self, context: CustomerProfile, headless: bool = False):
+        options = ChromeOptions()
+        ua = UserAgent()
+        
+        options.add_argument(f"--user-agent={ua.random}")
 
-    success = False
-    result = False
-    for i in range(cycles):
+        if context.chrome_profile_path:
+            options.add_argument(f"user-data-dir={context.chrome_profile_path}")
+        if context.chrome_profile_name:
+            options.add_argument(f"profile-directory={context.chrome_profile_name}")
+
+        ua = UserAgent()
+
+        options.add_argument("--ignore-certificate-errors")
+        options.add_argument("--ignore-ssl-errors")
+        options.add_argument("--disable-gpu")
+        options.add_argument(f"--user-agent={ua.getRandom}")
+
+        settings = {
+            "recentDestinations": [
+                {"id": "Save as PDF", "origin": "local", "account": ""}
+            ],
+            "selectedDestinationId": "Save as PDF",
+            "version": 2,
+        }
+        prefs = {
+            "printing.print_preview_sticky_settings.appState": json.dumps(settings),
+            "download.default_directory": os.getcwd(),
+        }
+        options.add_experimental_option("prefs", prefs)
+        options.add_argument("--kiosk-printing")
+
+        browser = Chrome(
+            options=options,
+            headless=headless,
+            use_subprocess=False,
+        )
+        browser.execute_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
+
+        self.driver = browser
+        
+    @property
+    def get_driver(self):
+        return self.driver
+
+
+class CitaBotBuilder:
+    update: Update
+    context: CustomerProfile
+    driver: Chrome
+
+    def __init__(self, context: CustomerProfile, update: Update = None):
+        self.update = update
+        self.context = context
+        self.driver = DriverBuilder(context).get_driver
+
+        confirmed_cita.update(
+            {
+                "doc_value": context.doc_value,
+            }
+        )
+
+    async def start(self, update: Update, cycles: int = CYCLES) -> dict | KeyboardInterrupt | None:
+        driver = self.driver
+        context = self.context
+
+        logging.basicConfig(
+            format="%(asctime)s - %(message)s",
+            level=logging.INFO,
+            **context.log_settings,  # type: ignore
+        )
+        if context.sms_webhook_token:
+            delete_message(context.sms_webhook_token)
+
+        operation_category = "icpplus"
+        operation_param = "tramiteGrupo[1]"
+
+        if context.province == Province.BARCELONA:
+            operation_category = "icpplustieb"
+            operation_param = "tramiteGrupo[0]"
+        elif context.province in [
+            Province.ALICANTE,
+            Province.ILLES_BALEARS,
+            Province.LAS_PALMAS,
+            Province.S_CRUZ_TENERIFE,
+        ]:
+            operation_category = "icpco"
+        elif context.province == Province.MADRID:
+            operation_category = "icpplustiem"
+        elif context.province == Province.MÁLAGA:
+            operation_category = "icpco"
+            operation_param = "tramiteGrupo[0]"
+        elif context.province in [
+            Province.MELILLA,
+            Province.SEVILLA,
+        ]:
+            operation_param = "tramiteGrupo[0]"
+
+        fast_forward_url = f"https://icp.administracionelectronica.gob.es/{operation_category}/citar?p={context.province.value}"
+        fast_forward_url2 = f"https://icp.administracionelectronica.gob.es/{operation_category}/acInfo?{operation_param}={context.operation_code.value}"
+
+        success = False
+        result = False
+        for i in range(cycles):
+            try:
+                logging.info(f"\033[33m[Attempt {i + 1}/{cycles}]\033[0m")
+                # await update.effective_message.reply_text(f"🔄 Intentando citar en {context.province.value}. Attempt {i + 1}/{cycles}")
+                result = cycle_cita(
+                    driver, context, fast_forward_url, fast_forward_url2
+                )
+            except KeyboardInterrupt:
+                raise
+            except TimeoutException:
+                logging.error("Timeout exception")
+            except Exception as e:
+                logging.error(f"SMTH BROKEN: {e}")
+                continue
+
+            if result:
+                success = True
+                logging.info("WIN")
+                
+                await update.effective_message.reply_text("🎉 CITA CONFIRMADA !!!!")
+                data = {**confirmed_cita}
+                if data.get("screenshot"):
+                    image_file = io.BytesIO(data.get("screenshot"))
+                    image_file.name = "cita-confirmada.png"
+                    image_file.seek(0)
+                    await update.effective_message.reply_photo(photo=image_file)
+                await update.effective_message.reply_text(
+                    f"Codigo de confirmacion: {data.get('code')}"
+                )
+                
+                break
+                
+
+        if not success:
+            logging.error("FAIL")
+            speaker.say("FAIL")
+            driver.quit()
+
+
+class TomaHuellasStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
         try:
-            logging.info(f"\033[33m[Attempt {i + 1}/{cycles}]\033[0m")
-            result = cycle_cita(driver, context, fast_forward_url, fast_forward_url2)
-        except KeyboardInterrupt:
-            raise
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtPaisNac"))
+            )
         except TimeoutException:
-            logging.error("Timeout exception")
-        except Exception as e:
-            logging.error(f"SMTH BROKEN: {e}")
-            continue
+            logging.error("Timed out waiting for form to load")
+            return None
 
-        if result:
-            success = True
-            logging.info("WIN")
-            break
+        # Select country
+        select = Select(driver.find_element(By.ID, "txtPaisNac"))
+        select.select_by_visible_text(context.country)
 
-    if not success:
-        logging.error("FAIL")
-        speaker.say("FAIL")
-        driver.quit()
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
 
 
-def toma_huellas_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtPaisNac"))
+class RecogidaDeTarjetaStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
+
+
+class SolicitudAsiloStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(
+            context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
         )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
 
-    # Select country
-    select = Select(driver.find_element(By.ID, "txtPaisNac"))
-    select.select_by_visible_text(context.country)
+        # Select country
+        select = Select(driver.find_element(By.ID, "txtPaisNac"))
+        select.select_by_visible_text(context.country)
 
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
+        return True
 
 
-def recogida_de_tarjeta_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+class RenovacionAsiloStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(
+            context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
         )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
 
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+        # Select country
+        select = Select(driver.find_element(By.ID, "txtPaisNac"))
+        select.select_by_visible_text(context.country)
 
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
+        return True
 
 
-def solicitud_asilo_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
+class BrexitStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
+
+
+class CartaInvitacionStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.DNI:
+            driver.find_element(By.ID, "rdbTipoDocDni").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
+
+
+class CertificadosStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.DNI:
+            driver.find_element(By.ID, "rdbTipoDocDni").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
+
+
+class AutorizacionDeRegresoStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
+        elif context.doc_type == DocType.NIE:
+            driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+
+        # Enter doc number and name
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        return True
+
+
+class AsignacionNieStep2(ICitaAction):
+    def __init__(self, driver: Chrome, context: CustomerProfile):
+        self.driver = driver
+        self.context = context
+
+    def do(self):
+        driver = self.driver
+        context = self.context
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtIdCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
+            return None
+
+        # Select doc type
+        if context.doc_type == DocType.PASSPORT:
+            option = driver.find_element(By.ID, "rdbTipoDocPas")
+            if option:
+                option.send_keys(Keys.SPACE)
+
+        # Enter doc number, name and year of birth
+        element = driver.find_element(By.ID, "txtIdCitado")
+        element.send_keys(
+            context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
         )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
 
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
+        # Select country
+        select = Select(driver.find_element(By.ID, "txtPaisNac"))
+        select.select_by_visible_text(context.country)
 
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(
-        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
-    )
-
-    # Select country
-    select = Select(driver.find_element(By.ID, "txtPaisNac"))
-    select.select_by_visible_text(context.country)
-
-    return True
+        return True
 
 
-def renovacion_de_asilo_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(
-        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
-    )
-
-    # Select country
-    select = Select(driver.find_element(By.ID, "txtPaisNac"))
-    select.select_by_visible_text(context.country)
-
-    return True
-
-
-def brexit_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
-
-
-def carta_invitacion_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.DNI:
-        driver.find_element(By.ID, "rdbTipoDocDni").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
-
-
-def certificados_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.DNI:
-        driver.find_element(By.ID, "rdbTipoDocDni").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
-
-
-def autorizacion_de_regreso_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        driver.find_element(By.ID, "rdbTipoDocPas").send_keys(Keys.SPACE)
-    elif context.doc_type == DocType.NIE:
-        driver.find_element(By.ID, "rdbTipoDocNie").send_keys(Keys.SPACE)
-
-    # Enter doc number and name
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(context.doc_value, Keys.TAB, context.name)
-
-    return True
-
-
-def asignacion_nie_step2(driver: webdriver, context: CustomerProfile):
-    try:
-        WebDriverWait(driver, DELAY).until(
-            EC.presence_of_element_located((By.ID, "txtIdCitado"))
-        )
-    except TimeoutException:
-        logging.error("Timed out waiting for form to load")
-        return None
-
-    # Select doc type
-    if context.doc_type == DocType.PASSPORT:
-        option = driver.find_element(By.ID, "rdbTipoDocPas")
-        if option:
-            option.send_keys(Keys.SPACE)
-
-    # Enter doc number, name and year of birth
-    element = driver.find_element(By.ID, "txtIdCitado")
-    element.send_keys(
-        context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
-    )
-
-    # Select country
-    select = Select(driver.find_element(By.ID, "txtPaisNac"))
-    select.select_by_visible_text(context.country)
-
-    return True
-
-
-def wait_exact_time(driver: webdriver, context: CustomerProfile):
+def wait_exact_time(driver: Chrome, context: CustomerProfile):
     if context.wait_exact_time:
         WebDriverWait(driver, 1200).until(
             lambda _x: [dt.now().minute, dt.now().second] in context.wait_exact_time
         )
 
 
-def body_text(driver: webdriver):
+def body_text(driver: Chrome):
     try:
         WebDriverWait(driver, DELAY).until(
             EC.presence_of_element_located((By.TAG_NAME, "body"))
@@ -588,7 +703,7 @@ def body_text(driver: webdriver):
         return ""
 
 
-def process_captcha(driver: webdriver, context: CustomerProfile):
+def process_captcha(driver: Chrome, context: CustomerProfile):
     if context.auto_captcha:
         if not context.anticaptcha_api_key:
             logging.error("Anticaptcha API key is empty")
@@ -615,7 +730,7 @@ def process_captcha(driver: webdriver, context: CustomerProfile):
     return True
 
 
-def solve_recaptcha(driver: webdriver, context: CustomerProfile):
+def solve_recaptcha(driver: Chrome, context: CustomerProfile):
     if not context.recaptcha_solver:
         site_key = driver.find_element(By.ID, "reCAPTCHA_site_key").get_attribute(
             "value"
@@ -648,7 +763,7 @@ def solve_recaptcha(driver: webdriver, context: CustomerProfile):
         return None
 
 
-def solve_image_captcha(driver: webdriver, context: CustomerProfile):
+def solve_image_captcha(driver: Chrome, context: CustomerProfile):
     if not context.image_captcha_solver:
         context.image_captcha_solver = imagecaptcha()
         context.image_captcha_solver.set_verbose(1)
@@ -677,7 +792,7 @@ def solve_image_captcha(driver: webdriver, context: CustomerProfile):
         os.unlink(tmp.name)
 
 
-def find_best_date_slots(driver: webdriver, context: CustomerProfile):
+def find_best_date_slots(driver: Chrome, context: CustomerProfile):
     try:
         els = driver.find_elements(By.CSS_SELECTOR, "[id^=lCita_]")
         dates = sorted([*map(lambda x: x.text, els)])
@@ -720,7 +835,7 @@ def find_best_date(dates, context: CustomerProfile):
     return None
 
 
-def select_office(driver: webdriver, context: CustomerProfile):
+def select_office(driver: Chrome, context: CustomerProfile):
     if not context.auto_office:
         speaker.say("MAKE A CHOICE")
         logging.info("Select office and press ENTER")
@@ -760,7 +875,7 @@ def select_office(driver: webdriver, context: CustomerProfile):
         return None
 
 
-def office_selection(driver: webdriver, context: CustomerProfile):
+def office_selection(driver: Chrome, context: CustomerProfile):
     driver.execute_script("enviar('solicitud');")
 
     for i in range(REFRESH_PAGE_CYCLES):
@@ -797,7 +912,7 @@ def office_selection(driver: webdriver, context: CustomerProfile):
             return None
 
 
-def phone_mail(driver: webdriver, context: CustomerProfile):
+def phone_mail(driver: Chrome, context: CustomerProfile):
     try:
         WebDriverWait(driver, DELAY).until(
             EC.presence_of_element_located((By.ID, "txtTelefonoCitado"))
@@ -826,7 +941,7 @@ def phone_mail(driver: webdriver, context: CustomerProfile):
     return cita_selection(driver, context)
 
 
-def confirm_appointment(driver: webdriver, context: CustomerProfile):
+def confirm_appointment(driver: Chrome, context: CustomerProfile):
     driver.find_element(By.ID, "chkTotal").send_keys(Keys.SPACE)
     driver.find_element(By.ID, "enviarCorreo").send_keys(Keys.SPACE)
 
@@ -836,13 +951,22 @@ def confirm_appointment(driver: webdriver, context: CustomerProfile):
     resp_text = body_text(driver)
     ctime = dt.now()
 
-    if "CITA CONFIRMADA Y GRABADA" in resp_text:
+    if "CITA CONFIRMADA" in resp_text:
         context.bot_result = True
         code = driver.find_element(By.ID, "justificanteFinal").text
         logging.info(f"[Step 6/6] Justificante cita: {code}")
         if context.save_artifacts:
             image_name = f"CONFIRMED-CITA-{ctime}.png".replace(":", "-")
-            driver.save_screenshot(image_name)
+            screenshot = driver.get_screenshot_as_base64(image_name)
+            screenshot_b64 = base64.b64decode(screenshot)
+
+            confirmed_cita.update(
+                {
+                    **confirmed_cita,
+                    "code": code,
+                    "screenshot": screenshot_b64,
+                }
+            )
             # TODO: fix saving to PDF
             # btn = driver.find_element(By.ID, "btnImprimir")
             # btn.send_keys(Keys.ENTER)
@@ -874,7 +998,7 @@ def log_backoff(details):
     logger=None,
 )
 def initial_page(
-    driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2
+    driver: Chrome, context: CustomerProfile, fast_forward_url, fast_forward_url2
 ):
     if context.first_load:
         driver.delete_all_cookies()
@@ -903,8 +1027,23 @@ def initial_page(
 
 
 def cycle_cita(
-    driver: webdriver, context: CustomerProfile, fast_forward_url, fast_forward_url2
+    driver: Chrome, context: CustomerProfile, fast_forward_url, fast_forward_url2
 ):
+    # ua = UserAgent()
+    # random_user_agent = f"--user-agent={ua}"
+
+    # # Randomize user agent
+    # if not user_agents.get(context.province.value):
+    #     # Add new user agent
+    #     user_agents[context.province.value] = random_user_agent
+    #     driver.options.add_argument(random_user_agent)
+    # else:
+    #     # Remove old user agent
+    #     driver.options.arguments.pop(
+    #         driver.options.arguments.index(user_agents[context.province.value])
+    #     )
+    #     driver.options.add_argument(random_user_agent)
+
     initial_page(driver, context, fast_forward_url, fast_forward_url2)
 
     # 1. Instructions page:
@@ -929,28 +1068,28 @@ def cycle_cita(
     logging.info("[Step 1/6] Personal info")
     success = False
     if context.operation_code == OperationType.TOMA_HUELLAS:
-        success = toma_huellas_step2(driver, context)
+        success = TomaHuellasStep2(driver, context).do()
     elif context.operation_code == OperationType.RECOGIDA_DE_TARJETA:
-        success = recogida_de_tarjeta_step2(driver, context)
+        success = RecogidaDeTarjetaStep2(driver, context).do()
     elif context.operation_code == OperationType.SOLICITUD_ASILO:
-        success = solicitud_asilo_step2(driver, context)
+        success = SolicitudAsiloStep2(driver, context).do()
     elif context.operation_code == OperationType.RENOVACION_ASILO:
-        success = renovacion_de_asilo_step2(driver, context)
+        success = RenovacionAsiloStep2(driver, context).do()
     elif context.operation_code == OperationType.BREXIT:
-        success = brexit_step2(driver, context)
+        success = BrexitStep2(driver, context).do()
     elif context.operation_code == OperationType.CARTA_INVITACION:
-        success = carta_invitacion_step2(driver, context)
+        success = CartaInvitacionStep2(driver, context).do()
     elif context.operation_code in [
         OperationType.CERTIFICADOS_NIE,
         OperationType.CERTIFICADOS_NIE_NO_COMUN,
         OperationType.CERTIFICADOS_RESIDENCIA,
         OperationType.CERTIFICADOS_UE,
     ]:
-        success = certificados_step2(driver, context)
+        success = CertificadosStep2(driver, context).do()
     elif context.operation_code == OperationType.AUTORIZACION_DE_REGRESO:
-        success = autorizacion_de_regreso_step2(driver, context)
+        success = AutorizacionDeRegresoStep2(driver, context).do()
     elif context.operation_code == OperationType.ASIGNACION_NIE:
-        success = asignacion_nie_step2(driver, context)
+        success = AsignacionNieStep2(driver, context).do()
 
     if not success:
         return None
@@ -981,7 +1120,7 @@ def cycle_cita(
 
 
 # 5. Cita selection
-def cita_selection(driver: webdriver, context: CustomerProfile):
+def cita_selection(driver: Chrome, context: CustomerProfile):
     resp_text = body_text(driver)
 
     if "DISPONE DE 5 MINUTOS" in resp_text:
@@ -1148,7 +1287,7 @@ def get_code(context: CustomerProfile):
     return None
 
 
-def add_reason(driver: webdriver, context: CustomerProfile):
+def add_reason(driver: Chrome, context: CustomerProfile):
     try:
         if context.operation_code == OperationType.SOLICITUD_ASILO:
             element = driver.find_element(By.ID, "txtObservaciones")
