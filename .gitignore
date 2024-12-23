@@ -1,11 +1,11 @@
 grab_*.py
-.vscode/
+.vscode
+.github
 .mypy_cache/
 __pycache__/
 examples/
 chrome_profiles/
 *.py[co]
-
 .DS_Store
 chromedriver
 .venv

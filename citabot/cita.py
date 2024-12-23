@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import io
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -15,6 +17,7 @@ from datetime import datetime as dt
 from enum import Enum
 from json.decoder import JSONDecodeError
 from typing import Any, Dict, Optional
+from venv import logger
 
 import backoff
 import requests
@@ -29,6 +32,8 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.wait import WebDriverWait
 from telegram import Update
 from undetected_chromedriver import Chrome, ChromeOptions
+
+from citabot.utils import Watcher
 
 from .speaker import new_speaker
 
@@ -250,6 +255,89 @@ class ICitaAction(ABC):
 
 user_agents = {}
 confirmed_cita = {}
+live_proxies = [
+    "socks4://195.219.98.27:5678",
+    "socks5://54.37.78.53:27606",
+    "http://130.162.180.254:8888",
+    "http://5.189.130.42:23055",
+    "socks5://51.210.111.216:43520",
+    "socks5://178.254.61.34:32250",
+    "socks5://188.165.247.6:40227",
+    "socks5://141.94.107.204:15669",
+    "socks5://162.19.107.54:54118",
+    "socks5://188.165.192.99:36219",
+    "socks5://141.94.106.171:33107",
+    "http://5.189.130.42:23055",
+    "http://130.162.180.254:8888",
+    "socks5://45.77.43.128:20046",
+    "socks5://54.36.11.104:51163",
+    "socks5://46.105.124.216:42902",
+    "socks5://162.19.107.54:55824",
+    "socks5://46.105.105.223:18579",
+    "socks5://64.227.124.137:51401",
+    "socks5://51.210.111.216:16466",
+    "socks5://162.19.107.54:39238",
+    "socks5://51.75.126.150:62889",
+    "socks5://45.77.43.128:20008",
+    "socks5://185.231.204.77:1080",
+    "socks5://45.77.43.128:20012",
+    "socks5://188.165.192.99:21407",
+    "socks5://51.75.126.150:19064",
+    "socks5://45.77.43.128:20035",
+    "socks5://51.75.126.150:37863",
+    "socks5://51.75.206.235:60428",
+    "socks5://51.210.111.216:11926",
+    "socks5://207.180.253.143:27364",
+    "socks5://51.75.95.7:21977",
+    "socks5://188.165.192.99:22287",
+    "socks5://188.165.192.99:8962",
+    "socks5://37.187.91.170:33698",
+]
+
+
+def proxy_selector():
+    while True:
+        for proxy in live_proxies:
+            yield proxy
+
+
+def generate_random_int(start: int, end: int):
+    return math.floor(random.uniform(start, end))
+
+
+def implicit_random_wait(
+    driver: Chrome, seconds: int = 0, start: int = 2, end: int = 5
+):
+    """That's an implicit wait function
+
+    Args:
+        driver (Chrome): chromedriver instance
+        seconds (int, optional): implicit wait in seconds. Defaults to 0.
+        start (int, optional): floor value of random number. Defaults to 2.
+        end (int, optional): ceil value of random number. Defaults to 5.
+    """
+    if seconds == 0:
+        wait = generate_random_int(start, end)
+    else:
+        wait = seconds
+
+    driver.implicitly_wait(wait)
+
+
+async def random_wait_async(seconds: int = 0, start: int = 2, end: int = 5):
+    """That's an async wait function in irder to async task in a time gap will not block the main thread.
+
+    Args:
+        seconds (int, optional): implicit wait in seconds. Defaults to 0.
+        start (int, optional): floor value of random number. Defaults to 2.
+        end (int, optional): ceil value of random number. Defaults to 5.
+    """
+    if seconds == 0:
+        wait = asyncio.sleep(generate_random_int(start, end))
+    else:
+        wait = asyncio.sleep(seconds)
+
+    await wait
 
 
 class DriverBuilder:
@@ -258,7 +346,7 @@ class DriverBuilder:
     def __init__(self, context: CustomerProfile, headless: bool = False):
         options = ChromeOptions()
         ua = UserAgent()
-        
+
         options.add_argument(f"--user-agent={ua.random}")
 
         if context.chrome_profile_path:
@@ -297,7 +385,7 @@ class DriverBuilder:
         )
 
         self.driver = browser
-        
+
     @property
     def get_driver(self):
         return self.driver
@@ -319,9 +407,12 @@ class CitaBotBuilder:
             }
         )
 
-    async def start(self, update: Update, cycles: int = CYCLES) -> dict | KeyboardInterrupt | None:
+    async def start(
+        self, update: Update, cycles: int = CYCLES
+    ) -> dict | KeyboardInterrupt | None:
         driver = self.driver
         context = self.context
+        await update.effective_message.reply_text("Bot started.")
 
         logging.basicConfig(
             format="%(asctime)s - %(message)s",
@@ -360,12 +451,21 @@ class CitaBotBuilder:
 
         success = False
         result = False
+        cancelled = False
+        iterator = proxy_selector()
         for i in range(cycles):
             try:
-                logging.info(f"\033[33m[Attempt {i + 1}/{cycles}]\033[0m")
+                proxy = next(iterator)
+                driver.options.add_argument("--proxy-server=" + proxy)
+                logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
+                logging.info(f"\033[33m[Proxy: {proxy}]\033[0m")
                 # await update.effective_message.reply_text(f"🔄 Intentando citar en {context.province.value}. Attempt {i + 1}/{cycles}")
-                result = cycle_cita(
-                    driver, context, fast_forward_url, fast_forward_url2
+                result = await cycle_cita(
+                    driver,
+                    context,
+                    fast_forward_url,
+                    fast_forward_url2,
+                    operation_category,
                 )
             except KeyboardInterrupt:
                 raise
@@ -374,11 +474,14 @@ class CitaBotBuilder:
             except Exception as e:
                 logging.error(f"SMTH BROKEN: {e}")
                 continue
+            except asyncio.CancelledError:
+                cancelled = True
+                break
 
             if result:
                 success = True
                 logging.info("WIN")
-                
+
                 await update.effective_message.reply_text("🎉 CITA CONFIRMADA !!!!")
                 data = {**confirmed_cita}
                 if data.get("screenshot"):
@@ -389,13 +492,18 @@ class CitaBotBuilder:
                 await update.effective_message.reply_text(
                     f"Codigo de confirmacion: {data.get('code')}"
                 )
-                
+
                 break
-                
+            
+        if cancelled:
+            await update.effective_message.reply_text("Cancelando...")
+            driver.quit()
 
         if not success:
             logging.error("FAIL")
-            speaker.say("FAIL")
+            await update.effective_message.reply_text(
+                "Something went wrong... Reinicie el bot"
+            )
             driver.quit()
 
 
@@ -885,7 +993,7 @@ def office_selection(driver: Chrome, context: CustomerProfile):
             logging.info("[Step 2/6] Office selection")
 
             # Office selection:
-            time.sleep(0.3)
+            implicit_random_wait(driver, seconds=0.3)
             try:
                 WebDriverWait(driver, DELAY).until(
                     EC.presence_of_element_located((By.ID, "btnSiguiente"))
@@ -896,7 +1004,7 @@ def office_selection(driver: Chrome, context: CustomerProfile):
 
             res = select_office(driver, context)
             if res is None:
-                time.sleep(5)
+                implicit_random_wait(driver, seconds=5)
                 driver.refresh()
                 continue
 
@@ -904,7 +1012,7 @@ def office_selection(driver: Chrome, context: CustomerProfile):
             btn.send_keys(Keys.ENTER)
             return True
         elif "En este momento no hay citas disponibles" in resp_text:
-            time.sleep(5)
+            implicit_random_wait(driver, seconds=5)
             driver.refresh()
             continue
         else:
@@ -997,17 +1105,44 @@ def log_backoff(details):
     on_backoff=log_backoff,
     logger=None,
 )
-def initial_page(
-    driver: Chrome, context: CustomerProfile, fast_forward_url, fast_forward_url2
+async def init_from_main_page(
+    driver: Chrome, context: CustomerProfile, operation_category: str
+):
+    try:
+        watcher = Watcher(driver)
+        watcher.open_extranjeria()
+        watcher.select_city(context.province.value, operation_category)
+        watcher.accept_cookie()
+        watcher.select_tramite(context.operation_code.value)
+
+        logger.info("Loaded initial page")
+    except Exception:
+        raise TimeoutException
+
+
+@backoff.on_exception(
+    backoff.constant,
+    TimeoutException,
+    interval=350,
+    max_tries=(10 if os.environ.get("CITA_TEST") else None),
+    on_backoff=log_backoff,
+    logger=None,
+)
+async def initial_page(
+    driver: Chrome,
+    context: CustomerProfile,
+    fast_forward_url,
+    fast_forward_url2,
+    operation_category,
 ):
     if context.first_load:
         driver.delete_all_cookies()
 
     driver.set_page_load_timeout(300 if context.first_load else 50)
     # Fix chromedriver 103 bug
-    time.sleep(1)
+    implicit_random_wait(driver, seconds=1)
     driver.get(fast_forward_url)
-    time.sleep(5)
+    implicit_random_wait(driver, seconds=5)
     if context.first_load:
         try:
             driver.execute_script("window.localStorage.clear();")
@@ -1016,35 +1151,27 @@ def initial_page(
             logging.error(e)
             pass
     driver.get(fast_forward_url2)
-    time.sleep(5)
+    implicit_random_wait(driver, seconds=5)
 
     resp_text = body_text(driver)
     if "CITA PREVIA EXTRANJERÍA" not in resp_text:
         context.first_load = True
-        raise TimeoutException
+        logging.info("fast forward not loaded, starting from main page")
+        await init_from_main_page(driver, context, operation_category)
 
     context.first_load = False
 
 
-def cycle_cita(
-    driver: Chrome, context: CustomerProfile, fast_forward_url, fast_forward_url2
+async def cycle_cita(
+    driver: Chrome,
+    context: CustomerProfile,
+    fast_forward_url,
+    fast_forward_url2,
+    operation_category,
 ):
-    # ua = UserAgent()
-    # random_user_agent = f"--user-agent={ua}"
-
-    # # Randomize user agent
-    # if not user_agents.get(context.province.value):
-    #     # Add new user agent
-    #     user_agents[context.province.value] = random_user_agent
-    #     driver.options.add_argument(random_user_agent)
-    # else:
-    #     # Remove old user agent
-    #     driver.options.arguments.pop(
-    #         driver.options.arguments.index(user_agents[context.province.value])
-    #     )
-    #     driver.options.add_argument(random_user_agent)
-
-    initial_page(driver, context, fast_forward_url, fast_forward_url2)
+    await initial_page(
+        driver, context, fast_forward_url, fast_forward_url2, operation_category
+    )
 
     # 1. Instructions page:
     try:
@@ -1094,7 +1221,7 @@ def cycle_cita(
     if not success:
         return None
 
-    time.sleep(2)
+    implicit_random_wait(driver, seconds=2)
     driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
     try:
@@ -1132,7 +1259,7 @@ def cita_selection(driver: Chrome, context: CustomerProfile):
         if not position:
             return None
 
-        time.sleep(2)
+        implicit_random_wait(driver, seconds=2)
         success = process_captcha(driver, context)
         if not success:
             return None
@@ -1146,7 +1273,7 @@ def cita_selection(driver: Chrome, context: CustomerProfile):
             pass
 
         driver.execute_script("envia();")
-        time.sleep(0.5)
+        implicit_random_wait(driver, seconds=0.5)
         driver.switch_to.alert.accept()
     elif "Seleccione una de las siguientes citas disponibles" in resp_text:
         logging.info("[Step 4/6] Cita attempt -> selection hit!")
@@ -1185,7 +1312,7 @@ def cita_selection(driver: Chrome, context: CustomerProfile):
                 return None
             slot = slots[best_date][0]
 
-            time.sleep(2)
+            implicit_random_wait(driver, seconds=2)
             success = process_captcha(driver, context)
             if not success:
                 return None

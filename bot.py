@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,9 +16,9 @@ from citabot import (
     CitaBotBuilder,
     CustomerProfile,
     DocType,
-    Office,
     OperationType,
     Province,
+    Office
 )
 
 TOKEN = os.getenv("CITA_CATCHER_BOT")
@@ -62,19 +61,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
         "Este bot se destina a ayudar a los extranjeros a solicitar citas de asilo\n"
         + "en las oficinas de extranjeria de manera GRATIS, como lo tenga que ser.",
+        reply_markup=keyboard,
     )
-    await update.effective_message.reply_text(
-        "Para solicitar cita tiene que subir un archivo de formato .json y con proximos datos:\n"
-    )
-    await update.effective_message.reply_markdown(
-        "**Lineas de datos:**\n"
-        "`doc_value`: NIE o Passport number, no spaces.\n"
-        "`country`: Country (RUSIA by default). Copypaste yours from the appropriate page.\n"
-        "`name`: First and Last Name\n"
-        '`phone`: Phone number, no spaces, like "600000000"\n'
-        "`email`: Email\n"
-        '`year_of_birth`: Year of birth, like "YYYY"\n'
-    )
+    
+    # await update.effective_message.reply_text(
+    #     "Para solicitar cita tiene que subir un archivo de formato .json y con proximos datos:\n"
+    # )
+    # await update.effective_message.reply_markdown(
+    #     "**Lineas de datos:**\n"
+    #     "`doc_value`: NIE o Passport number, no spaces.\n"
+    #     "`country`: Country (RUSIA by default). Copypaste yours from the appropriate page.\n"
+    #     "`name`: First and Last Name\n"
+    #     '`phone`: Phone number, no spaces, like "600000000"\n'
+    #     "`email`: Email\n"
+    #     '`year_of_birth`: Year of birth, like "YYYY"\n'
+    # )
 
     return LVL_1_ROUTES
 
@@ -85,7 +86,10 @@ async def request_appointment(
     query = update.callback_query
     await query.answer()
 
-    data = user_data[query.from_user.id]
+    # data = user_data[query.from_user.id]
+    with open("data.json", "r") as f:
+        data = json.load(f)
+        user_data.update({query.from_user.id: data})
 
     if not data.get("doc_value"):
         await update.effective_message.reply_text("no hay datos de documento.")
@@ -117,7 +121,7 @@ async def request_appointment(
         anticaptcha_api_key=os.environ.get(
             "CITA_BOT_ANTICAPTCHA_KEY"
         ),  # Anti-captcha API Key (auto_captcha=False to disable it)
-        auto_captcha=True,  # Enable anti-captcha plugin (if False, you have to solve reCaptcha manually and press ENTER in the Terminal)
+        auto_captcha=False,  # Enable anti-captcha plugin (if False, you have to solve reCaptcha manually and press ENTER in the Terminal)
         auto_office=True,
         chrome_driver_path="/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
         save_artifacts=True,  # Record available offices / take available slots screenshot
@@ -135,6 +139,7 @@ async def request_appointment(
         min_time="9:00",
         max_time="18:00",
         sms_webhook_token=os.getenv("CITA_BOT_WEBHOOK_TOKEN"),
+        reason_or_type="Renovar la documentación por caducación",
         # Offices in order of preference
         # This selects specified offices one by one or a random one if not found.
         # For recogida only the first specified office will be attempted or none
@@ -148,7 +153,15 @@ async def request_appointment(
         tasks.update({update.effective_user.id: task})
 
     else:
-        await update.effective_message.reply_text("Estamos trabajando en esta cita")
+        new_task = asyncio.create_task(
+            CitaBotBuilder(context=customer).start(update, cycles=200)
+        )
+        old_task = tasks.pop(update.effective_user.id)
+        old_task.cancel()
+        
+        tasks.update({update.effective_user.id: new_task})
+        
+        await update.effective_message.reply_text("La búsqueda reiniciada")
 
 
 async def reveal_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,7 +189,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.answer()
 
     if update.effective_user.id in tasks:
-        task = tasks.pop(update.effective_user.id)
+        task: asyncio.Task = tasks.pop(update.effective_user.id)
         task.cancel()
 
         await update.effective_message.reply_text("Cancelado...")
@@ -186,7 +199,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # START BOT
 def main() -> None:
-    bot = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -201,11 +214,11 @@ def main() -> None:
         fallbacks=[CommandHandler("start", start)],
     )
 
-    bot.add_handler(conv_handler)
-    bot.add_handler(
+    app.add_handler(conv_handler)
+    app.add_handler(
         MessageHandler(filters=filters.ATTACHMENT, callback=data_json_handler)
     )
-    bot.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()
 
 
 if __name__ == "__main__":
