@@ -47,4 +47,4 @@ LIVE_PROXIES = [
     "socks5://37.187.91.170:33698",
 ]
 
-BROWSERS_LIST = [Browsers.CHROME, Browsers.FIREFOX, Browsers.SAFARI]
+BROWSERS_LIST = [Browsers.CHROME, Browsers.FIREFOX]

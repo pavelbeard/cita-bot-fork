@@ -1,4 +1,7 @@
-__all__ = ["TooManyRequestsException"]
+__all__ = ["TooManyRequestsException", "RejectionURLException"]
 
 class TooManyRequestsException(Exception):
+    pass
+
+class RejectionURLException(Exception):
     pass

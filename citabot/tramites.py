@@ -127,6 +127,13 @@ class RenovacionAsiloStep2(ICitaAction):
             )
         except TimeoutException:
             logging.error("Timed out waiting for form to load")
+        
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtDesCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
             return None
 
         # Select doc type
@@ -135,9 +142,15 @@ class RenovacionAsiloStep2(ICitaAction):
 
         # Enter doc number and name
         element = driver.find_element(By.ID, "txtIdCitado")
-        element.send_keys(
-            context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
-        )
+        if element:
+            element.send_keys(
+                context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
+            )
+        else:
+            element = driver.find_element(By.ID, "txtAnnoCitado")
+            element.send_keys(
+                context.doc_value, Keys.TAB, context.name, Keys.TAB, context.year_of_birth
+            )
 
         # Select country
         select = Select(driver.find_element(By.ID, "txtPaisNac"))
@@ -161,6 +174,13 @@ class BrexitStep2(ICitaAction):
             )
         except TimeoutException:
             logging.error("Timed out waiting for form to load")
+
+        try:
+            WebDriverWait(driver, DELAY).until(
+                EC.presence_of_element_located((By.ID, "txtDesCitado"))
+            )
+        except TimeoutException:
+            logging.error("Timed out waiting for form to load")
             return None
 
         # Select doc type
@@ -171,7 +191,12 @@ class BrexitStep2(ICitaAction):
 
         # Enter doc number and name
         element = driver.find_element(By.ID, "txtIdCitado")
-        element.send_keys(context.doc_value, Keys.TAB, context.name)
+
+        if element:
+            element.send_keys(context.doc_value, Keys.TAB, context.name)
+        else:
+            element = driver.find_element(By.ID, "txtDesCitado")
+            element.send_keys(context.doc_value, Keys.TAB, context.name)
 
         return True
 

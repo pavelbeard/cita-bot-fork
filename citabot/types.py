@@ -203,6 +203,9 @@ class CustomerProfile:
     recaptcha_solver: Any = None
     image_captcha_solver: Any = None
     current_solver: Any = None
+    
+    # 
+    proxy: Optional[bool] = False
 
     def __post_init__(self):
         if self.operation_code == OperationType.RECOGIDA_DE_TARJETA:

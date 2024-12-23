@@ -18,7 +18,7 @@ from undetected_geckodriver import Firefox
 
 from citabot.constants import BROWSERS_LIST, DELAY, LIVE_PROXIES
 from citabot.types import CustomerProfile
-from citabot.exceptions import TooManyRequestsException
+from citabot.exceptions import RejectionURLException, TooManyRequestsException
 
 
 def proxy_selector():
@@ -153,7 +153,7 @@ class Watcher:
         self.waiter.until(lambda x: accept_button2.is_displayed())
         accept_button2.send_keys(Keys.ENTER)
         
-        if "Requested URL was rejected" in body_text(self.driver):
-            raise Exception("Requested URL was rejected")
+        if re.search("Requested URL was rejected", self.driver.page_source):
+            raise RejectionURLException
         
         return self.driver

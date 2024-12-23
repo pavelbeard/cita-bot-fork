@@ -63,19 +63,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         + "en las oficinas de extranjeria de manera GRATIS, como lo tenga que ser.",
         reply_markup=keyboard,
     )
-    
-    # await update.effective_message.reply_text(
-    #     "Para solicitar cita tiene que subir un archivo de formato .json y con proximos datos:\n"
-    # )
-    # await update.effective_message.reply_markdown(
-    #     "**Lineas de datos:**\n"
-    #     "`doc_value`: NIE o Passport number, no spaces.\n"
-    #     "`country`: Country (RUSIA by default). Copypaste yours from the appropriate page.\n"
-    #     "`name`: First and Last Name\n"
-    #     '`phone`: Phone number, no spaces, like "600000000"\n'
-    #     "`email`: Email\n"
-    #     '`year_of_birth`: Year of birth, like "YYYY"\n'
-    # )
 
     return LVL_1_ROUTES
 
@@ -86,7 +73,6 @@ async def request_appointment(
     query = update.callback_query
     await query.answer()
 
-    # data = user_data[query.from_user.id]
     with open("data.json", "r") as f:
         data = json.load(f)
         user_data.update({query.from_user.id: data})
@@ -144,6 +130,7 @@ async def request_appointment(
         # This selects specified offices one by one or a random one if not found.
         # For recogida only the first specified office will be attempted or none
         offices=[Office.BENIDORM, Office.ALICANTE_COMISARIA],  # put your offices here
+        proxy=False
     )
 
     if update.effective_user.id not in tasks:
@@ -151,6 +138,7 @@ async def request_appointment(
             CitaBotBuilder(context=customer).start(update, cycles=200)
         )
         tasks.update({update.effective_user.id: task})
+        await update.effective_message.reply_text("Bot started.")
 
     else:
         new_task = asyncio.create_task(

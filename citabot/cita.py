@@ -5,6 +5,7 @@ import logging
 import os
 
 import backoff
+import urllib3
 from fake_useragent import UserAgent
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -12,16 +13,18 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.webdriver import WebDriver as Edge
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+
+# from undetected_geckodriver import Firefox
+from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.safari.webdriver import WebDriver as Safari
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from telegram import Update
 from undetected_chromedriver import Chrome, ChromeOptions
-from undetected_geckodriver import Firefox
 
 from citabot.constants import CYCLES, DELAY
-from citabot.exceptions import TooManyRequestsException
+from citabot.exceptions import RejectionURLException, TooManyRequestsException
 from citabot.states import confirmed_cita
 from citabot.steps import delete_message, office_selection, phone_mail
 from citabot.tramites import (
@@ -71,21 +74,17 @@ class DriverBuilder:
         elif browser == Browsers.EDGE:
             options = EdgeOptions()
 
-        ua = UserAgent()
+        user_agent = UserAgent()
 
-        options.add_argument(f"--user-agent={ua.random}")
+        logging.info(
+            f"\033[1;32mUser Agent. new user agent: {user_agent.random}\033[0m"
+        )
 
-        if context.chrome_profile_path:
-            options.add_argument(f"user-data-dir={context.chrome_profile_path}")
-        if context.chrome_profile_name:
-            options.add_argument(f"profile-directory={context.chrome_profile_name}")
-
-        ua = UserAgent()
+        user_agent = UserAgent()
 
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--disable-gpu")
-        options.add_argument(f"--user-agent={ua.getRandom}")
 
         settings = {
             "recentDestinations": [
@@ -94,39 +93,73 @@ class DriverBuilder:
             "selectedDestinationId": "Save as PDF",
             "version": 2,
         }
-        prefs = {
+        preferences = {
             "printing.print_preview_sticky_settings.appState": json.dumps(settings),
             "download.default_directory": os.getcwd(),
         }
-        options.add_experimental_option("prefs", prefs)
-        options.add_argument("--kiosk-printing")
 
-        if browser == Browsers.CHROME:
-            driver = Chrome(
-                options=options,
-                headless=headless,
-                use_subprocess=False,
-            )
-        elif browser == Browsers.FIREFOX:
-            driver = Firefox(
-                options=options,
-                headless=headless,
-                use_subprocess=False,
-            )
-        elif browser == Browsers.SAFARI:
-            driver = Safari(
-                options=options,
-            )
-        elif browser == Browsers.EDGE:
-            driver = Edge(
-                options=options,
+
+        if context.proxy:
+            iterator = proxy_selector()
+            proxy = next(iterator)
+            options.add_argument("--proxy-server=" + proxy)
+            logging.info(f"\033[33m[Proxy: {proxy}]\033[0m")
+
+        try:
+            if browser == Browsers.CHROME:
+                if context.chrome_profile_path:
+                    options.add_argument(f"user-data-dir={context.chrome_profile_path}")
+                if context.chrome_profile_name:
+                    options.add_argument(
+                        f"profile-directory={context.chrome_profile_name}"
+                    )
+
+                options.add_argument(f"--user-agent={user_agent.random}")
+                options.add_experimental_option("prefs", preferences)
+                options.add_argument("--kiosk-printing")
+                driver = Chrome(
+                    options=options,
+                    headless=headless,
+                    use_subprocess=False,
+                )
+            elif browser == Browsers.FIREFOX:
+                options.set_preference(
+                    "print.print_preview_sticky_settings.appState", json.dumps(settings)
+                )
+
+                # Set download directory
+                options.set_preference("browser.download.dir", os.getcwd())
+                options.set_preference("browser.download.folderList", 2)
+                options.set_preference(
+                    "browser.helperApps.neverAsk.saveToDisk", "application/pdf"
+                )
+                # set user agent
+
+                options.set_preference("general.useragent.override", user_agent.random)
+
+                if headless:
+                    options.add_argument("--headless")
+
+                driver = Firefox(
+                    options=options,
+                )
+            elif browser == Browsers.SAFARI:
+                driver = Safari(
+                    options=options,
+                )
+            elif browser == Browsers.EDGE:
+                driver = Edge(
+                    options=options,
+                )
+
+            driver.execute_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
 
-        driver.execute_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
-
-        self.driver = driver
+            self.driver = driver
+        except Exception as e:
+            logging.error(e)
+            return None
 
     @property
     def get_driver(self):
@@ -152,7 +185,6 @@ class CitaBotBuilder:
         self, update: Update, cycles: int = CYCLES
     ) -> dict | KeyboardInterrupt | None:
         context = self.context
-        await update.effective_message.reply_text("Bot started.")
 
         logging.basicConfig(
             format="%(asctime)s - %(message)s",
@@ -192,21 +224,19 @@ class CitaBotBuilder:
         success = False
         result = False
         cancelled = False
-        iterator = proxy_selector()
         browser_iterator = change_driver()
 
         browser = next(browser_iterator)
-        driver = DriverBuilder(context, browser).get_driver
+        driver = DriverBuilder(context, browser=browser).get_driver
 
         for i in range(cycles):
             try:
-                proxy = next(iterator)
-                driver.options.add_argument("--proxy-server=" + proxy)
+                if not driver:
+                    raise Exception("Driver not found")
 
                 logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
-                logging.info(f"\033[33m[Proxy: {proxy}]\033[0m")
+                logging.info(f"🔄 Intentando citar en {context.province.value}. Attempt {i + 1}/{cycles}")
 
-                # await update.effective_message.reply_text(f"🔄 Intentando citar en {context.province.value}. Attempt {i + 1}/{cycles}")
                 result = await cycle_cita(
                     driver,
                     context,
@@ -218,11 +248,17 @@ class CitaBotBuilder:
                 raise
             except TimeoutException:
                 logging.error("Timeout exception")
-            except Exception as e:
-                logging.error(f"SMTH BROKEN: {e}")
-                continue
             except asyncio.CancelledError:
                 cancelled = True
+                break
+            except urllib3.exceptions.HTTPError:
+                logging.error("New connection error")
+                break
+            except Exception as e:
+                logging.error(f"SMTH BROKEN: {e}")
+                await update.effective_message.reply_text(
+                    "Something went wrong... Comprueba el bot... 😔"
+                )
                 break
 
             if result:
@@ -249,11 +285,9 @@ class CitaBotBuilder:
 
         if not success:
             logging.error("FAIL")
-            await update.effective_message.reply_text(
-                "Something went wrong... Reinicie el bot"
-            )
             driver.quit()
-            return None
+
+            await self.start(update=update, cycles=CYCLES)
 
 
 def log_backoff(details):
@@ -288,9 +322,8 @@ async def get_page(
     fast_forward_trigger_failure = False
     watcher_trigger_failure = False
     browser_change_trigger_failure = False
-    
-    browser_iterator = change_driver()
 
+    browser_iterator = change_driver()
 
     while True:
         if not fast_forward_trigger_failure:
@@ -334,6 +367,8 @@ async def get_page(
                 break
             except TooManyRequestsException:
                 raise TooManyRequestsException
+            except RejectionURLException:
+                raise RejectionURLException
             except Exception:
                 watcher_trigger_failure = True
                 driver.quit()
@@ -487,6 +522,7 @@ async def cycle_cita(
         )
     except TimeoutException:
         logging.error("Timed out waiting for Solicitar page to load")
+        return None
 
     try:
         wait_exact_time(driver, context)
