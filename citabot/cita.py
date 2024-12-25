@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import sys
 
 import backoff
 import urllib3
@@ -38,7 +39,7 @@ from citabot.tramites import (
     SolicitudAsiloStep2,
     TomaHuellasStep2,
 )
-from citabot.types import Browsers, CustomerProfile, OperationType, Province
+from citabot.types import Browsers, CustomerProfile, Drivers, OperationType, Province
 from citabot.utils import (
     Watcher,
     body_text,
@@ -230,8 +231,12 @@ class CitaBotBuilder:
         driver_iterator = change_driver()
 
         while True:
-            browser_name = next(browser_iterator)
-            driver_name = next(driver_iterator)
+            browser_name = (
+                next(browser_iterator) if sys.platform != "linux" else Browsers.FIREFOX
+            )
+            driver_name = (
+                next(driver_iterator) if sys.platform != "linux" else Drivers.FIREFOX
+            )
             driver = DriverBuilder(context, browser=browser_name).get_driver
 
             for i in range(cycles):
@@ -292,9 +297,10 @@ class CitaBotBuilder:
 
             if not success:
                 if driver_connection_lost:
+                    # driver.service.stop()
                     kill_process_by_name(name=browser_name.value)  # browser
                     kill_process_by_name(name=driver_name.value)  # driver
-                    
+
                     driver_connection_lost = False
 
                 else:
