@@ -5,6 +5,7 @@ import math
 import random
 from datetime import datetime as dt
 import sys
+from typing import Dict
 
 import psutil
 from selenium.common.exceptions import TimeoutException
@@ -171,7 +172,7 @@ class Watcher:
         return self.driver
 
 
-def kill_process_by_name(name: str):
+def kill_process_by_name(name: str) -> None:
     """By the connection lost error, the driver process will be killed by psutil"""
     for proc in psutil.process_iter(attrs=["name", "pid"]):
         try:
@@ -186,7 +187,7 @@ def kill_process_by_name(name: str):
             continue
 
 
-def open_json_file(path):
+def open_json_file(path) -> Dict[str, str]:
     try:
         with open(path, "r") as f:
             data = json.load(f)

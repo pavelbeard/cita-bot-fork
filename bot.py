@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from venv import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -78,6 +79,8 @@ async def request_appointment(
     user_data.update({query.from_user.id: data})
 
     settings = open_json_file("settings.json")
+    
+    logger.info("[settings.json] loaded. settings: %s", settings)
 
     if not data.get("doc_value"):
         await update.effective_message.reply_text("no hay datos de documento.")
