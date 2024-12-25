@@ -23,7 +23,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from undetected_chromedriver import Chrome
-from undetected_geckodriver import Firefox
+
+# from undetected_geckodriver import Firefox
+from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 
 from citabot.constants import DELAY, REFRESH_PAGE_CYCLES
 from citabot.states import confirmed_cita
