@@ -116,7 +116,7 @@ async def request_appointment(
         auto_office=True,
         driver_path=settings.get(
             "driver_path",
-            "/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
+            "/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/geckodriver",
         ),
         save_artifacts=True,  # Record available offices / take available slots screenshot
         province=Province.ALICANTE,  # put your province here

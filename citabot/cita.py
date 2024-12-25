@@ -3,7 +3,6 @@ import io
 import json
 import logging
 import os
-import sys
 
 import backoff
 import urllib3
@@ -11,19 +10,15 @@ from fake_useragent import UserAgent
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.edge.webdriver import WebDriver as Edge
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-
-# from undetected_geckodriver import Firefox
+from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
-from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.safari.webdriver import WebDriver as Safari
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from telegram import Update
-from undetected_chromedriver import Chrome, ChromeOptions
-from selenium.webdriver.firefox.service import Service as FirefoxService
+from undetected_chromedriver import Chrome
 
 from citabot.constants import CYCLES, DELAY
 from citabot.exceptions import RejectionURLException, TooManyRequestsException
@@ -40,12 +35,11 @@ from citabot.tramites import (
     SolicitudAsiloStep2,
     TomaHuellasStep2,
 )
-from citabot.types import Browsers, CustomerProfile, Drivers, OperationType, Province
+from citabot.types import CustomerProfile, OperationType, Province
 from citabot.utils import (
     Watcher,
     body_text,
     change_browser,
-    change_driver,
     implicit_random_wait,
     kill_process_by_name,
     proxy_selector,
@@ -66,18 +60,10 @@ class DriverBuilder:
     def __init__(
         self,
         context: CustomerProfile,
-        browser: Browsers = Browsers.CHROME,
         headless: bool = False,
     ):
-        if browser == Browsers.CHROME:
-            options = ChromeOptions()
-        elif browser == Browsers.FIREFOX:
-            options = FirefoxOptions()
-            service = FirefoxService(executable_path=context.driver_path)
-        elif browser == Browsers.SAFARI:
-            options = SafariOptions()
-        elif browser == Browsers.EDGE:
-            options = EdgeOptions()
+        options = FirefoxOptions()
+        service = FirefoxService(executable_path=context.driver_path)
 
         user_agent = UserAgent()
 
@@ -98,10 +84,6 @@ class DriverBuilder:
             "selectedDestinationId": "Save as PDF",
             "version": 2,
         }
-        preferences = {
-            "printing.print_preview_sticky_settings.appState": json.dumps(settings),
-            "download.default_directory": os.getcwd(),
-        }
 
         if context.proxy:
             iterator = proxy_selector()
@@ -110,55 +92,28 @@ class DriverBuilder:
             logging.info(f"\033[33m[Proxy: {proxy}]\033[0m")
 
         try:
-            if browser == Browsers.CHROME:
-                if context.chrome_profile_path:
-                    options.add_argument(f"user-data-dir={context.chrome_profile_path}")
-                if context.chrome_profile_name:
-                    options.add_argument(
-                        f"profile-directory={context.chrome_profile_name}"
-                    )
+            options.set_preference(
+                "print.print_preview_sticky_settings.appState", json.dumps(settings)
+            )
+            options.set_preference("download.default_directory", os.getcwd())
 
-                options.add_argument(f"--user-agent={user_agent.random}")
-                options.add_experimental_option("prefs", preferences)
-                options.add_argument("--kiosk-printing")
-                driver = Chrome(
-                    driver_executable_path=context.driver_path
-                    if context.driver_path
-                    else None,
-                    options=options,
-                    headless=headless,
-                    use_subprocess=False,
-                )
-            elif browser == Browsers.FIREFOX:
-                options.set_preference(
-                    "print.print_preview_sticky_settings.appState", json.dumps(settings)
-                )
+            # Set download directory
+            options.set_preference("browser.download.dir", os.getcwd())
+            options.set_preference("browser.download.folderList", 2)
+            options.set_preference(
+                "browser.helperApps.neverAsk.saveToDisk", "application/pdf"
+            )
+            # set user agent
 
-                # Set download directory
-                options.set_preference("browser.download.dir", os.getcwd())
-                options.set_preference("browser.download.folderList", 2)
-                options.set_preference(
-                    "browser.helperApps.neverAsk.saveToDisk", "application/pdf"
-                )
-                # set user agent
+            options.set_preference("general.useragent.override", user_agent.random)
 
-                options.set_preference("general.useragent.override", user_agent.random)
+            if headless:
+                options.add_argument("--headless")
 
-                if headless:
-                    options.add_argument("--headless")
-
-                driver = Firefox(
-                    options=options,
-                    service=service if context.driver_path else None,
-                )
-            elif browser == Browsers.SAFARI:
-                driver = Safari(
-                    options=options,
-                )
-            elif browser == Browsers.EDGE:
-                driver = Edge(
-                    options=options,
-                )
+            driver = Firefox(
+                options=options,
+                service=service if context.driver_path else None,
+            )
 
             driver.execute_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
@@ -233,17 +188,9 @@ class CitaBotBuilder:
         result = False
         cancelled = False
         driver_connection_lost = False
-        browser_iterator = change_browser()
-        driver_iterator = change_driver()
 
         while True:
-            browser_name = (
-                next(browser_iterator) if sys.platform != "linux" else Browsers.FIREFOX
-            )
-            driver_name = (
-                next(driver_iterator) if sys.platform != "linux" else Drivers.FIREFOX
-            )
-            driver = DriverBuilder(context, browser=browser_name).get_driver
+            driver = DriverBuilder(context).get_driver
 
             for i in range(cycles):
                 try:
@@ -304,8 +251,8 @@ class CitaBotBuilder:
             if not success:
                 if driver_connection_lost:
                     # driver.service.stop()
-                    kill_process_by_name(name=browser_name.value)  # browser
-                    kill_process_by_name(name=driver_name.value)  # driver
+                    kill_process_by_name("Firefox")  # browser
+                    kill_process_by_name("geckodriver")  # driver
 
                     driver_connection_lost = False
 
