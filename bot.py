@@ -79,7 +79,7 @@ async def request_appointment(
     user_data.update({query.from_user.id: data})
 
     settings = open_json_file("settings.json")
-    
+
     logger.info("[settings.json] loaded. settings: %s", settings)
 
     if not data.get("doc_value"):
