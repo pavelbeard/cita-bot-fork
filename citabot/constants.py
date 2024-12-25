@@ -1,7 +1,7 @@
 __all__ = ["CYCLES", "REFRESH_PAGE_CYCLES", "DELAY", "LIVE_PROXIES", "BROWSERS_LIST"]
 
 
-from citabot.types import Browsers
+from citabot.types import Browsers, Drivers
 
 
 CYCLES = 144
@@ -48,3 +48,4 @@ LIVE_PROXIES = [
 ]
 
 BROWSERS_LIST = [Browsers.CHROME, Browsers.FIREFOX]
+DRIVERS_LIST = [Drivers.CHROME, Drivers.FIREFOX]

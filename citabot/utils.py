@@ -3,8 +3,9 @@ import logging
 import math
 import random
 from datetime import datetime as dt
-import re
+import sys
 
+import psutil
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -16,7 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from undetected_chromedriver import Chrome
 from undetected_geckodriver import Firefox
 
-from citabot.constants import BROWSERS_LIST, DELAY, LIVE_PROXIES
+from citabot.constants import BROWSERS_LIST, DELAY, DRIVERS_LIST, LIVE_PROXIES
 from citabot.types import CustomerProfile
 from citabot.exceptions import RejectionURLException, TooManyRequestsException
 
@@ -27,10 +28,16 @@ def proxy_selector():
             yield proxy
 
 
-def change_driver():
+def change_browser():
     while True:
         for browser in BROWSERS_LIST:
             yield browser
+
+
+def change_driver():
+    while True:
+        for driver in DRIVERS_LIST:
+            yield driver
 
 
 def generate_random_int(start: int, end: int):
@@ -90,9 +97,20 @@ def body_text(driver: Chrome | Firefox | Safari | Edge):
         return ""
 
 
+def handle_blocking_situations(waiter: WebDriverWait):
+    title = waiter.until(lambda x: x.title)
+    if "Request Rejected" in title:
+        raise RejectionURLException
+    elif "429 Too Many Requests" in title:
+        raise TooManyRequestsException
+    else:
+        return None
+
+
 class Watcher:
     def __init__(self, driver: Chrome):
         self.driver = driver
+        self.waiter = WebDriverWait(driver, 4)
 
         self.extranjeria = ".mf-simple-list--item.cat_extranjeria"
         self.citaPrevia = "[href='/pagina/index/directorio/icpplus']"
@@ -105,21 +123,15 @@ class Watcher:
 
         self.cookieAcceptBtn = "#cookie_action_close_header"
 
-    def open_extranjeria(self):
-        driver: Chrome = self.driver
-        waiter = WebDriverWait(driver, 10)
-
-        driver.get("https://icp.administracionelectronica.gob.es/icpplus/index.html/")
-
+    async def open_extranjeria(self):
+        self.driver.get(
+            "https://icp.administracionelectronica.gob.es/icpplus/index.html/"
+        )
+        handle_blocking_situations(self.waiter)
         logging.info("Extranjeria page loaded")
-        
-        if re.search("The user has sent too many requests", self.driver.page_source):
-            raise TooManyRequestsException()
 
-        self.driver = driver
-        self.waiter = waiter
-
-    def select_city(self, city, operation_category):
+    async def select_city(self, city, operation_category):
+        handle_blocking_situations(self.waiter)
         __address_level1 = {"by": By.XPATH, "value": self.selectAddressLevel1}
         address_level1 = self.driver.find_element(**__address_level1)
 
@@ -132,7 +144,8 @@ class Watcher:
 
         logging.info("City accepted")
 
-    def accept_cookie(self):
+    async def accept_cookie(self):
+        handle_blocking_situations(self.waiter)
         cookie_accept_button = self.driver.find_element(
             By.ID, "cookie_action_close_header"
         )
@@ -141,7 +154,8 @@ class Watcher:
 
         logging.info("Cookie accepted")
 
-    def select_tramite(self, tramite):
+    async def select_tramite(self, tramite):
+        handle_blocking_situations(self.waiter)
         __tramites = {"by": By.XPATH, "value": self.selectTramites}
         tramites_select = self.driver.find_element(**__tramites)
         self.waiter.until(lambda x: tramites_select.is_displayed())
@@ -152,8 +166,20 @@ class Watcher:
         accept_button2 = self.driver.find_element(By.ID, "btnAceptar")
         self.waiter.until(lambda x: accept_button2.is_displayed())
         accept_button2.send_keys(Keys.ENTER)
-        
-        if re.search("Requested URL was rejected", self.driver.page_source):
-            raise RejectionURLException
-        
+
         return self.driver
+
+
+def kill_process_by_name(name: str):
+    """By the connection lost error, the driver process will be killed by psutil"""
+    for proc in psutil.process_iter(attrs=["name", "pid"]):
+        try:
+            if proc.info["name"] == name:
+                logging.info(f"Killing process {proc.info['pid']}")
+                if sys.platform.startswith("win") or sys.platform.startswith("cygwin"):
+                    proc.kill()
+                else:
+                    proc.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+            logging.error(e)
+            continue

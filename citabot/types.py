@@ -160,11 +160,18 @@ class Province(str, Enum):
     ZARAGOZA = "50"
     
 class Browsers(str, Enum):
-    CHROME = "chrome"
-    FIREFOX = "firefox"
-    SAFARI = "safari"
-    OPERA = "opera"
-    EDGE = "edge"
+    CHROME = "Google Chrome"
+    FIREFOX = "Firefox"
+    SAFARI = "Safari"
+    OPERA = "Opera"
+    EDGE = "Edge"
+    
+class Drivers(str, Enum):
+    CHROME = "undetected_chromedriver"
+    FIREFOX = "geckodriver"
+    SAFARI = "safaridriver"
+    OPERA = "operadriver"
+    EDGE = "msedgedriver"
 
 
 @dataclass

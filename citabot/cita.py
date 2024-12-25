@@ -42,8 +42,10 @@ from citabot.types import Browsers, CustomerProfile, OperationType, Province
 from citabot.utils import (
     Watcher,
     body_text,
+    change_browser,
     change_driver,
     implicit_random_wait,
+    kill_process_by_name,
     proxy_selector,
     wait_exact_time,
 )
@@ -97,7 +99,6 @@ class DriverBuilder:
             "printing.print_preview_sticky_settings.appState": json.dumps(settings),
             "download.default_directory": os.getcwd(),
         }
-
 
         if context.proxy:
             iterator = proxy_selector()
@@ -224,70 +225,84 @@ class CitaBotBuilder:
         success = False
         result = False
         cancelled = False
-        browser_iterator = change_driver()
+        driver_connection_lost = False
+        browser_iterator = change_browser()
+        driver_iterator = change_driver()
 
-        browser = next(browser_iterator)
-        driver = DriverBuilder(context, browser=browser).get_driver
+        while True:
+            browser_name = next(browser_iterator)
+            driver_name = next(driver_iterator)
+            driver = DriverBuilder(context, browser=browser_name).get_driver
 
-        for i in range(cycles):
-            try:
-                if not driver:
-                    raise Exception("Driver not found")
+            for i in range(cycles):
+                try:
+                    logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
+                    logging.info(
+                        f"🔄 Intentando citar en {context.province}. Attempt {i + 1}/{cycles}"
+                    )
 
-                logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
-                logging.info(f"🔄 Intentando citar en {context.province.value}. Attempt {i + 1}/{cycles}")
+                    result = await cycle_cita(
+                        driver,
+                        context,
+                        fast_forward_url,
+                        fast_forward_url2,
+                        operation_category,
+                    )
+                except KeyboardInterrupt:
+                    logging.error("Keyboard interrupt")
+                    raise
+                except TimeoutException:
+                    logging.error("Timeout exception")
+                    continue
+                except asyncio.CancelledError:
+                    cancelled = True
+                    break
+                except urllib3.exceptions.HTTPError:
+                    driver_connection_lost = True
+                    logging.error("Connection with the driver was lost")
+                    break
+                except Exception as e:
+                    logging.error(f"SMTH BROKEN: {e}")
+                    await update.effective_message.reply_text(
+                        "Something went wrong... Comprueba el bot... 😔"
+                    )
+                    break
 
-                result = await cycle_cita(
-                    driver,
-                    context,
-                    fast_forward_url,
-                    fast_forward_url2,
-                    operation_category,
-                )
-            except KeyboardInterrupt:
-                raise
-            except TimeoutException:
-                logging.error("Timeout exception")
-            except asyncio.CancelledError:
-                cancelled = True
-                break
-            except urllib3.exceptions.HTTPError:
-                logging.error("New connection error")
-                break
-            except Exception as e:
-                logging.error(f"SMTH BROKEN: {e}")
-                await update.effective_message.reply_text(
-                    "Something went wrong... Comprueba el bot... 😔"
-                )
-                break
+                if result:
+                    success = True
+                    logging.info("WIN")
 
-            if result:
-                success = True
-                logging.info("WIN")
+                    await update.effective_message.reply_text("🎉 CITA CONFIRMADA !!!!")
+                    data = {**confirmed_cita}
+                    if data.get("screenshot"):
+                        image_file = io.BytesIO(data.get("screenshot"))
+                        image_file.name = "cita-confirmada.png"
+                        image_file.seek(0)
+                        await update.effective_message.reply_photo(photo=image_file)
+                    await update.effective_message.reply_text(
+                        f"Codigo de confirmacion: {data.get('code')}"
+                    )
 
-                await update.effective_message.reply_text("🎉 CITA CONFIRMADA !!!!")
-                data = {**confirmed_cita}
-                if data.get("screenshot"):
-                    image_file = io.BytesIO(data.get("screenshot"))
-                    image_file.name = "cita-confirmada.png"
-                    image_file.seek(0)
-                    await update.effective_message.reply_photo(photo=image_file)
-                await update.effective_message.reply_text(
-                    f"Codigo de confirmacion: {data.get('code')}"
-                )
+                    return success
 
-                break
+            if cancelled:
+                await update.effective_message.reply_text("Cancelando...")
+                driver.quit()
+                return None
 
-        if cancelled:
-            await update.effective_message.reply_text("Cancelando...")
-            driver.quit()
-            return None
+            if not success:
+                if driver_connection_lost:
+                    kill_process_by_name(name=browser_name.value)  # browser
+                    kill_process_by_name(name=driver_name.value)  # driver
+                    
+                    driver_connection_lost = False
 
-        if not success:
-            logging.error("FAIL")
-            driver.quit()
+                else:
+                    logging.error("FAIL")
+                    driver.close()
+                    driver.quit()
 
-            await self.start(update=update, cycles=CYCLES)
+                await asyncio.sleep(5)
 
 
 def log_backoff(details):
@@ -323,7 +338,7 @@ async def get_page(
     watcher_trigger_failure = False
     browser_change_trigger_failure = False
 
-    browser_iterator = change_driver()
+    browser_iterator = change_browser()
 
     while True:
         if not fast_forward_trigger_failure:
@@ -358,10 +373,10 @@ async def get_page(
         elif not watcher_trigger_failure:
             try:
                 watcher = Watcher(driver)
-                watcher.open_extranjeria()
-                watcher.select_city(context.province.value, operation_category)
-                watcher.accept_cookie()
-                watcher.select_tramite(context.operation_code.value)
+                await watcher.open_extranjeria()
+                await watcher.select_city(context.province.value, operation_category)
+                await watcher.accept_cookie()
+                await watcher.select_tramite(context.operation_code.value)
 
                 logging.info("Loaded initial page")
                 break
@@ -369,7 +384,9 @@ async def get_page(
                 raise TooManyRequestsException
             except RejectionURLException:
                 raise RejectionURLException
-            except Exception:
+            except Exception as e:
+                logging.exception(e)
+
                 watcher_trigger_failure = True
                 driver.quit()
                 continue
@@ -385,73 +402,6 @@ async def get_page(
 
             except Exception:
                 raise TimeoutException
-
-
-# @backoff.on_exception(
-#     backoff.constant,
-#     TimeoutException,
-#     interval=350,
-#     max_tries=(10 if os.environ.get("CITA_TEST") else None),
-#     on_backoff=log_backoff,
-#     logger=None,
-# )
-# async def init_from_main_page(
-#     driver: Chrome | Firefox | Safari | Edge,
-#     context: CustomerProfile,
-#     operation_category: str,
-# ):
-#     try:
-#         watcher = Watcher(driver)
-#         watcher.open_extranjeria()
-#         watcher.select_city(context.province.value, operation_category)
-#         watcher.accept_cookie()
-#         watcher.select_tramite(context.operation_code.value)
-
-#         logger.info("Loaded initial page")
-#     except Exception:
-#         raise TimeoutException
-
-
-# @backoff.on_exception(
-#     backoff.constant,
-#     TimeoutException,
-#     interval=350,
-#     max_tries=(10 if os.environ.get("CITA_TEST") else None),
-#     on_backoff=log_backoff,
-#     logger=None,
-# )
-# async def initial_page(
-#     driver: Chrome | Firefox | Safari | Edge,
-#     context: CustomerProfile,
-#     fast_forward_url,
-#     fast_forward_url2,
-#     operation_category,
-# ):
-#     if context.first_load:
-#         driver.delete_all_cookies()
-
-#     driver.set_page_load_timeout(300 if context.first_load else 50)
-#     # Fix chromedriver 103 bug
-#     implicit_random_wait(driver, seconds=1)
-#     driver.get(fast_forward_url)
-#     implicit_random_wait(driver, seconds=5)
-#     if context.first_load:
-#         try:
-#             driver.execute_script("window.localStorage.clear();")
-#             driver.execute_script("window.sessionStorage.clear();")
-#         except Exception as e:
-#             logging.error(e)
-#             pass
-#     driver.get(fast_forward_url2)
-#     implicit_random_wait(driver, seconds=5)
-
-#     resp_text = body_text(driver)
-#     if "CITA PREVIA EXTRANJERÍA" not in resp_text:
-#         context.first_load = True
-#         logging.info("fast forward not loaded, starting from main page")
-#         await init_from_main_page(driver, context, operation_category)
-
-#     context.first_load = False
 
 
 async def cycle_cita(

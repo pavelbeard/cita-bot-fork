@@ -134,11 +134,11 @@ async def request_appointment(
     )
 
     if update.effective_user.id not in tasks:
+        await update.effective_message.reply_text("Bot started.")
         task = asyncio.create_task(
             CitaBotBuilder(context=customer).start(update, cycles=200)
         )
         tasks.update({update.effective_user.id: task})
-        await update.effective_message.reply_text("Bot started.")
 
     else:
         new_task = asyncio.create_task(
