@@ -23,7 +23,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from telegram import Update
 from undetected_chromedriver import Chrome, ChromeOptions
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 from citabot.constants import CYCLES, DELAY
@@ -72,16 +71,9 @@ class DriverBuilder:
     ):
         if browser == Browsers.CHROME:
             options = ChromeOptions()
-
-            if context.driver_path:
-                service = ChromeService(executable_path=context.driver_path)
-                options.service = service
         elif browser == Browsers.FIREFOX:
             options = FirefoxOptions()
-
-            if context.driver_path:
-                service = FirefoxService(executable_path=context.driver_path)
-                options.service = service
+            service = FirefoxService(executable_path=context.driver_path)
         elif browser == Browsers.SAFARI:
             options = SafariOptions()
         elif browser == Browsers.EDGE:
@@ -130,6 +122,9 @@ class DriverBuilder:
                 options.add_experimental_option("prefs", preferences)
                 options.add_argument("--kiosk-printing")
                 driver = Chrome(
+                    driver_executable_path=context.driver_path
+                    if context.driver_path
+                    else None,
                     options=options,
                     headless=headless,
                     use_subprocess=False,
@@ -154,6 +149,7 @@ class DriverBuilder:
 
                 driver = Firefox(
                     options=options,
+                    service=service if context.driver_path else None,
                 )
             elif browser == Browsers.SAFARI:
                 driver = Safari(
