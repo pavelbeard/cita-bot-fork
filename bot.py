@@ -18,8 +18,9 @@ from citabot import (
     DocType,
     OperationType,
     Province,
-    Office
+    Office,
 )
+from citabot.utils import open_json_file
 
 TOKEN = os.getenv("CITA_CATCHER_BOT")
 LVL_1_ROUTES, LVL_2_ROUTES = range(2)
@@ -73,9 +74,10 @@ async def request_appointment(
     query = update.callback_query
     await query.answer()
 
-    with open("data.json", "r") as f:
-        data = json.load(f)
-        user_data.update({query.from_user.id: data})
+    data = open_json_file("data.json")
+    user_data.update({query.from_user.id: data})
+
+    settings = open_json_file("settings.json")
 
     if not data.get("doc_value"):
         await update.effective_message.reply_text("no hay datos de documento.")
@@ -109,7 +111,10 @@ async def request_appointment(
         ),  # Anti-captcha API Key (auto_captcha=False to disable it)
         auto_captcha=False,  # Enable anti-captcha plugin (if False, you have to solve reCaptcha manually and press ENTER in the Terminal)
         auto_office=True,
-        chrome_driver_path="/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
+        driver_path=settings.get(
+            "driver_path",
+            "/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
+        ),
         save_artifacts=True,  # Record available offices / take available slots screenshot
         province=Province.ALICANTE,  # put your province here
         operation_code=OperationType.RENOVACION_ASILO,
@@ -130,7 +135,7 @@ async def request_appointment(
         # This selects specified offices one by one or a random one if not found.
         # For recogida only the first specified office will be attempted or none
         offices=[Office.BENIDORM, Office.ALICANTE_COMISARIA],  # put your offices here
-        proxy=False
+        proxy=False,
     )
 
     if update.effective_user.id not in tasks:
@@ -146,9 +151,9 @@ async def request_appointment(
         )
         old_task = tasks.pop(update.effective_user.id)
         old_task.cancel()
-        
+
         tasks.update({update.effective_user.id: new_task})
-        
+
         await update.effective_message.reply_text("La búsqueda reiniciada")
 
 

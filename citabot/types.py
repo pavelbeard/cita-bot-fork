@@ -191,7 +191,7 @@ class CustomerProfile:
     anticaptcha_api_key: Optional[str] = None
     auto_captcha: bool = True
     auto_office: bool = True
-    chrome_driver_path: str = "/usr/local/bin/chromedriver"
+    driver_path: str = "/usr/local/bin/chromedriver"
     chrome_profile_name: Optional[str] = None
     chrome_profile_path: Optional[str] = None
     min_date: Optional[str] = None  # "dd/mm/yyyy"

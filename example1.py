@@ -31,7 +31,7 @@ if __name__ == "__main__":
         anticaptcha_api_key=os.environ.get("CITA_BOT_ANTICAPTCHA_KEY"),  # Anti-captcha API Key (auto_captcha=False to disable it)
         auto_captcha=True,  # Enable anti-captcha plugin (if False, you have to solve reCaptcha manually and press ENTER in the Terminal)
         auto_office=True,
-        chrome_driver_path="/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
+        driver_path="/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/chromedriver",
         save_artifacts=True,  # Record available offices / take available slots screenshot
         province=Province.ALICANTE, # put your province here
         operation_code=OperationType.RENOVACION_ASILO,

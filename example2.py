@@ -8,7 +8,7 @@ if __name__ == "__main__":
         anticaptcha_api_key="... your key here ...",
         auto_captcha=False,
         auto_office=True,
-        chrome_driver_path="/usr/local/bin/chromedriver",
+        driver_path="/usr/local/bin/chromedriver",
         save_artifacts=True,
         province=Province.BARCELONA,
         operation_code=OperationType.TOMA_HUELLAS,

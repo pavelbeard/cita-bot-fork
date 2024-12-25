@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import math
 import random
@@ -183,3 +184,12 @@ def kill_process_by_name(name: str):
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
             logging.error(e)
             continue
+
+
+def open_json_file(path):
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+            return data
+    except FileNotFoundError:
+        return {}

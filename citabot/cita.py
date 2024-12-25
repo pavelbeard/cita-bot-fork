@@ -23,6 +23,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from telegram import Update
 from undetected_chromedriver import Chrome, ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
 
 from citabot.constants import CYCLES, DELAY
 from citabot.exceptions import RejectionURLException, TooManyRequestsException
@@ -70,8 +72,16 @@ class DriverBuilder:
     ):
         if browser == Browsers.CHROME:
             options = ChromeOptions()
+
+            if context.driver_path:
+                service = ChromeService(executable_path=context.driver_path)
+                options.service = service
         elif browser == Browsers.FIREFOX:
             options = FirefoxOptions()
+
+            if context.driver_path:
+                service = FirefoxService(executable_path=context.driver_path)
+                options.service = service
         elif browser == Browsers.SAFARI:
             options = SafariOptions()
         elif browser == Browsers.EDGE:
