@@ -39,7 +39,6 @@ from citabot.types import CustomerProfile, OperationType, Province
 from citabot.utils import (
     Watcher,
     body_text,
-    change_browser,
     implicit_random_wait,
     kill_process_by_name,
     proxy_selector,
@@ -273,7 +272,7 @@ def log_backoff(details):
 @backoff.on_exception(
     backoff.constant,
     TimeoutException,
-    interval=350,
+    max_time=350,
     max_tries=(10 if os.environ.get("CITA_TEST") else None),
     on_backoff=log_backoff,
     logger=None,
@@ -281,7 +280,7 @@ def log_backoff(details):
 @backoff.on_exception(
     backoff.constant,
     TooManyRequestsException,
-    interval=600,
+    max_time=600,
     max_tries=(10 if os.environ.get("CITA_TEST") else None),
     on_backoff=log_backoff,
     logger=None,
@@ -296,8 +295,6 @@ async def get_page(
     fast_forward_trigger_failure = False
     watcher_trigger_failure = False
     browser_change_trigger_failure = False
-
-    browser_iterator = change_browser()
 
     while True:
         if not fast_forward_trigger_failure:
@@ -352,9 +349,7 @@ async def get_page(
 
         elif not browser_change_trigger_failure:
             try:
-                browser = next(browser_iterator)
-                logging.info(f"\033[33m[Browser]: change to {browser}\033[0m")
-                driver = DriverBuilder(context, browser).get_driver
+                driver = DriverBuilder(context).get_driver
 
                 fast_forward_trigger_failure = False
                 watcher_trigger_failure = False
