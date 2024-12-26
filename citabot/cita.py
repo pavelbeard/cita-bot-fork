@@ -272,7 +272,7 @@ def log_backoff(details):
 @backoff.on_exception(
     backoff.constant,
     TimeoutException,
-    max_time=350,
+    interval=350,
     max_tries=(10 if os.environ.get("CITA_TEST") else None),
     on_backoff=log_backoff,
     logger=None,
@@ -280,7 +280,7 @@ def log_backoff(details):
 @backoff.on_exception(
     backoff.constant,
     TooManyRequestsException,
-    max_time=600,
+    interval=600,
     max_tries=(10 if os.environ.get("CITA_TEST") else None),
     on_backoff=log_backoff,
     logger=None,
