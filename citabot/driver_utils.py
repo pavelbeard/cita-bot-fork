@@ -340,7 +340,7 @@ class WebDriverErrorHandler:
 
                     title = driver.title
                     delay = self.exponential_backoff(attempt)
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(10)
 
                     if title == "429 Too Many Requests":
                         logging.info(
