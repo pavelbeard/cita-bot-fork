@@ -4,6 +4,7 @@ import logging
 import math
 import random
 from datetime import datetime as dt
+import time
 from typing import Dict
 
 from selenium.common.exceptions import TimeoutException
@@ -100,7 +101,21 @@ def wait_for_element(driver: Chrome | Firefox, by: By, timeout: int = DELAY):
         return True
     except TimeoutException:
         logging.info("Timed out waiting for element to load")
-        return None
+        
+        # check for title
+        try:
+            title = driver.title
+            time.sleep(2)
+            
+            if "429 Too Many Requests" in title:
+                raise TooManyRequestsException
+            elif "Request Rejected" in title:
+                raise RejectionURLException
+            
+            return None
+        except Exception as e:
+            logging.error(e)
+            return None
 
 
 def body_text(driver: Chrome | Firefox | Safari | Edge):

@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -249,7 +249,7 @@ class CitaBot:
         except FastForwardInaccessibleException:
             return False
         except TimeoutException:
-            return False
+            raise WebDriverException
         except TooManyRequestsException:
             raise
         except RejectionURLException:

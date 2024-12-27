@@ -21,6 +21,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 
 from citabot.constants import LIVE_PROXIES
+from citabot.exceptions import RejectionURLException, TooManyRequestsException
 from citabot.types import BrowserConfig, Browsers, CustomerProfile
 from citabot.utils import handle_blocking_situations
 
@@ -308,25 +309,27 @@ class WebDriverErrorHandler:
                     return function_result
 
                 # region: TooManyRequestsException
-                # except TooManyRequestsException as e:
-                #     logging.warning(f"Requests limit exceeded on attempt {attempt}")
-                #     delay = self.exponential_backoff(attempt)
-                #     logging.info(
-                #         f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
-                #     )
-                #     await asyncio.sleep(delay)
-                #     last_exception = e
+                except TooManyRequestsException as e:
+                    logging.warning(f"Requests limit exceeded on attempt {attempt}")
+                    delay = self.exponential_backoff(attempt)
+                    logging.info(
+                        f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
+                    )
+                    await asyncio.sleep(delay)
+                    last_exception = e
 
-                # except RejectionURLException as e:
-                #     logging.warning("Rejected URL on attempt {attempt}")
+                except RejectionURLException as e:
+                    logging.warning("Rejected URL on attempt {attempt}")
 
-                #     if driver:
-                #         new_driver = await self.refresh_session(kwargs["driver"])
-                #         kwargs["driver"] = new_driver
+                    if driver and context:
+                        new_driver = await self.recover_driver(
+                            driver=driver, context=context
+                        )
+                        kwargs["driver"] = new_driver
 
-                #     logging.info("[Rejection URL] Waiting for 3 seconds before retry.")
-                #     await asyncio.sleep(3)
-                #     last_exception = e
+                    logging.info("[Rejection URL] Waiting for 3 seconds before retry.")
+                    await asyncio.sleep(3)
+                    last_exception = e
                 # endregion
 
                 except WebDriverException as e:
@@ -338,19 +341,19 @@ class WebDriverErrorHandler:
                     title = driver.title
                     delay = self.exponential_backoff(attempt)
                     await asyncio.sleep(3)
-                        
+
                     if title == "429 Too Many Requests":
                         logging.info(
                             f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
                         )
                         await asyncio.sleep(delay)
-                    
+
                     if driver and context and title == "Request Rejected":
                         new_driver = await self.recover_driver(
                             driver=driver, context=context
                         )
                         await asyncio.sleep(3)
-                        
+
                     last_exception = e
 
                 except urllib3.exceptions.HTTPError as e:
