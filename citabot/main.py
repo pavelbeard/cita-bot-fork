@@ -77,6 +77,8 @@ class CitaBot:
         Province.SEVILLA: OperationConfig(category="icpplus", param="tramiteGrupo[1]"),
     }
 
+    too_many_requests_trigger = False
+
     def __init__(self, context: CustomerProfile, update: Update = None):
         self.update = update
         self.context = context
@@ -133,15 +135,18 @@ class CitaBot:
 
         for i in range(cycles):
             try:
-                if i != 0 and i % 3 == 0:
-                    logging.info("Waiting for 10 minutes...")
-                    await asyncio.sleep(600)
-                
+                if not CitaBot.too_many_requests_trigger:
+                    if i != 0 and i % 3 == 0:
+                        logging.info("Waiting for 10 minutes...")
+                        await asyncio.sleep(600)
+                else:
+                    CitaBot.too_many_requests_trigger = False
+
                 with DriverBuilder(context) as driver:
                     self.driver = driver
-                    logging.info(f"\033[33m[Attempt: {i + 1}/{CYCLES}]\033[0m")
+                    logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
                     logging.info(
-                        f"🔄 Trying to catch cita en {context.province}. Attempt {i + 1}/{CYCLES}"
+                        f"🔄 Trying to catch cita en {context.province}. Attempt {i + 1}/{cycles}"
                     )
 
                     result = await self.cycle_cita(
@@ -173,6 +178,7 @@ class CitaBot:
             except TooManyRequestsException:
                 logging.info("[429] Too many requests")
                 logging.info("Waiting for 600 seconds...")
+                CitaBot.too_many_requests_trigger = True
                 await asyncio.sleep(600)
                 continue
 

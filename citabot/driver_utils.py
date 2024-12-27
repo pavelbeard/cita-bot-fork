@@ -23,6 +23,9 @@ class DriverBuilder:
         "version": 2,
     }
 
+    counter = 0
+    driver = None
+
     def __init__(
         self,
         context: CustomerProfile,
@@ -36,7 +39,6 @@ class DriverBuilder:
             proxy=context.proxy,
         )
         self.browser_type = browser_type
-        self.driver = None
         self._user_agent = None
         self.additional_options = additional_options
 
@@ -120,7 +122,7 @@ class DriverBuilder:
                     if self.config.driver_path
                     else None
                 )
-                self.driver = Chrome(
+                DriverBuilder.driver = Chrome(
                     options=options,
                     service=service if self.config.driver_path else None,
                 )
@@ -131,16 +133,16 @@ class DriverBuilder:
                     if self.config.driver_path
                     else None
                 )
-                self.driver = Firefox(
+                DriverBuilder.driver = Firefox(
                     options=options,
                     service=service if self.config.driver_path else None,
                 )
 
-            self.driver.execute_script(
+            DriverBuilder.driver.execute_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
 
-            return self.driver
+            return DriverBuilder.driver
         except Exception as e:
             logging.error("Failed to build driver: %s", str(e))
             return None
@@ -152,18 +154,27 @@ class DriverBuilder:
             driver = self.build()
             yield driver
         finally:
-            if self.driver:
+            if DriverBuilder.driver:
                 try:
-                    self.driver.quit()
+                    DriverBuilder.driver.quit()
                 except Exception as e:
                     logging.error("Error while closing driver: %s", str(e))
 
     def __enter__(self):
-        return self.build()
+        if DriverBuilder.counter % 3 == 0:
+            logging.info("Building new driver...")
+            return self.build()
+        else:
+            return DriverBuilder.driver
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.driver:
+        if DriverBuilder.driver:
             try:
-                self.driver.quit()
+                if DriverBuilder.counter != 0 and DriverBuilder.counter % 3 == 0:
+                    DriverBuilder.driver.quit()
+                else:
+                    logging.info("Persisting driver every 3 cycles")
             except Exception as e:
                 logging.error("Error while closing driver: %s", str(e))
+
+            DriverBuilder.counter += 1
