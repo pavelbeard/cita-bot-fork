@@ -3,8 +3,8 @@ import json
 import logging
 import math
 import random
-from datetime import datetime as dt
 import time
+from datetime import datetime as dt
 from typing import Dict
 
 from selenium.common.exceptions import TimeoutException
@@ -19,8 +19,8 @@ from undetected_chromedriver import Chrome
 from undetected_geckodriver import Firefox
 
 from citabot.constants import BROWSERS_LIST, DELAY, DRIVERS_LIST, LIVE_PROXIES
-from citabot.types import CustomerProfile
 from citabot.exceptions import RejectionURLException, TooManyRequestsException
+from citabot.types import CustomerProfile
 
 
 def proxy_selector():
@@ -92,7 +92,7 @@ def wait_exact_time(driver: Chrome | Firefox, context: CustomerProfile):
         return None
 
 
-def wait_for_element(driver: Chrome | Firefox, by: By, timeout: int = DELAY):
+def wait_for_element(driver: Chrome | Firefox, by: By, timeout: int = 10):
     try:
         by_selector = by
         WebDriverWait(driver, timeout).until(
@@ -101,18 +101,22 @@ def wait_for_element(driver: Chrome | Firefox, by: By, timeout: int = DELAY):
         return True
     except TimeoutException:
         logging.info("Timed out waiting for element to load")
-        
+
         # check for title
         try:
             title = driver.title
             time.sleep(2)
-            
+
             if "429 Too Many Requests" in title:
                 raise TooManyRequestsException
             elif "Request Rejected" in title:
                 raise RejectionURLException
-            
+
             return None
+        except TooManyRequestsException:
+            raise
+        except RejectionURLException:
+            raise
         except Exception as e:
             logging.error(e)
             return None
@@ -127,35 +131,6 @@ def body_text(driver: Chrome | Firefox | Safari | Edge):
     except TimeoutException:
         logging.info("Timed out waiting for body to load")
         return ""
-
-
-async def handle_blocking_situations(
-    driver: Chrome | Firefox, default_interval: int = 1
-):
-    while True:
-        try:
-            WebDriverWait(driver, default_interval).until(
-                EC.text_to_be_present_in_element(
-                    (By.TAG_NAME, "h1"), "Too Many Requests"
-                )
-            )
-            raise TooManyRequestsException
-        except TimeoutException:
-            pass
-
-        try:
-            WebDriverWait(driver, default_interval).until(
-                EC.text_to_be_present_in_element(
-                    (By.TAG_NAME, "body"),
-                    "The requested URL was rejected. Please consult with your administrador.",
-                )
-            )
-            raise RejectionURLException
-        except TimeoutException:
-            pass
-
-        await asyncio.sleep(default_interval)
-
 
 class Watcher:
     def __init__(self, driver: Chrome):
@@ -174,6 +149,10 @@ class Watcher:
         self.cookieAcceptBtn = "#cookie_action_close_header"
 
     async def open_extranjeria(self):
+        self.driver.delete_all_cookies()
+        self.driver.execute_script("window.localStorage.clear();")
+        self.driver.execute_script("window.sessionStorage.clear();")
+        
         self.driver.get(
             "https://icp.administracionelectronica.gob.es/icpplus/index.html/"
         )
@@ -181,18 +160,20 @@ class Watcher:
 
     async def select_city(self, city, operation_category):
         __address_level1 = {"by": By.XPATH, "value": self.selectAddressLevel1}
-        self.waiter.until(
-            EC.presence_of_element_located(tuple(__address_level1.values()))
-        )
+
+        if not wait_for_element(self.driver, tuple(__address_level1.values())):
+            return None
+        
         address_level1 = self.driver.find_element(**__address_level1)
 
         select1 = Select(address_level1)
         select1.select_by_value(f"/{operation_category}/citar?p={city}&locale=es")
 
         __accept_button = {"by": By.ID, "value": "btnAceptar"}
-        self.waiter.until(
-            EC.presence_of_element_located(tuple(__accept_button.values()))
-        )
+
+        if not wait_for_element(self.driver, tuple(__accept_button.values())):
+            return None
+
         accept_button = self.driver.find_element(**__accept_button)
         accept_button.send_keys(Keys.ENTER)
 
@@ -200,9 +181,10 @@ class Watcher:
 
     async def accept_cookie(self):
         __cookie_accept_button = {"by": By.ID, "value": "cookie_action_close_header"}
-        self.waiter.until(
-            EC.presence_of_element_located(tuple(__cookie_accept_button.values()))
-        )
+
+        if not wait_for_element(self.driver, tuple(__cookie_accept_button.values())):
+            return None
+
         cookie_accept_button = self.driver.find_element(**__cookie_accept_button)
         cookie_accept_button.send_keys(Keys.ENTER)
 
@@ -210,16 +192,20 @@ class Watcher:
 
     async def select_tramite(self, tramite):
         __tramites = {"by": By.XPATH, "value": self.selectTramites}
-        self.waiter.until(EC.presence_of_element_located(tuple(__tramites.values())))
+
+        if not wait_for_element(self.driver, tuple(__tramites.values())):
+            return None
+
         tramites_select = self.driver.find_element(**__tramites)
 
         select2 = Select(tramites_select)
         select2.select_by_value(tramite)
 
         __accept_button2 = {"by": By.ID, "value": "btnAceptar"}
-        self.waiter.until(
-            EC.presence_of_element_located(tuple(__accept_button2.values()))
-        )
+
+        if not wait_for_element(self.driver, tuple(__accept_button2.values())):
+            return None
+
         accept_button2 = self.driver.find_element(**__accept_button2)
         accept_button2.send_keys(Keys.ENTER)
 

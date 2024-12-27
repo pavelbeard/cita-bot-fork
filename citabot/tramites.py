@@ -1,15 +1,15 @@
-from undetected_chromedriver import Chrome
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.select import Select
-from selenium.common.exceptions import TimeoutException
-
 import logging
 
-from citabot.types import ICitaAction, CustomerProfile, DocType
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.ui import WebDriverWait
+
 from citabot.constants import DELAY
+from citabot.types import CustomerProfile, DocType, ICitaAction
 
 
 def check_form_exists(driver: Chrome):

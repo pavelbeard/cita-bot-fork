@@ -12,7 +12,7 @@ from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 from telegram import Update
 
 from citabot.constants import CYCLES
-from citabot.driver_utils import DriverBuilder, WebDriverErrorHandler
+from citabot.driver_utils import DriverBuilder
 from citabot.exceptions import (
     FastForwardInaccessibleException,
     RejectionURLException,
@@ -42,6 +42,7 @@ from citabot.utils import (
     Watcher,
     body_text,
     implicit_random_wait,
+    random_wait_async,
     wait_exact_time,
     wait_for_element,
 )
@@ -130,12 +131,14 @@ class CitaBot:
             context.province.value, context.operation_code.value
         )
 
-        with DriverBuilder(context) as driver:
-            self.driver = driver
-            error_handler = WebDriverErrorHandler(driver=self.driver)
-
-            for i in range(cycles):
-                try:
+        for i in range(cycles):
+            try:
+                if i != 0 and i % 3 == 0:
+                    logging.info("Waiting for 10 minutes...")
+                    await asyncio.sleep(600)
+                
+                with DriverBuilder(context) as driver:
+                    self.driver = driver
                     logging.info(f"\033[33m[Attempt: {i + 1}/{CYCLES}]\033[0m")
                     logging.info(
                         f"🔄 Trying to catch cita en {context.province}. Attempt {i + 1}/{CYCLES}"
@@ -147,7 +150,6 @@ class CitaBot:
                         fast_forward_url,
                         fast_forward_url2,
                         config.category,
-                        error_handler,
                     )
 
                     if result:
@@ -168,29 +170,49 @@ class CitaBot:
 
                         return True
 
-                except KeyboardInterrupt:
-                    logging.error("Keyboard interrupt")
-                    await update.effective_message.reply_text("Terminando...")
-                    error_handler.cleanup_orphaned_processes()
-                    logging.info("Driver closed")
-                    await update.effective_message.reply_text("Terminado.")
-                    raise
-                except asyncio.CancelledError:
-                    logging.info("Cancelling...")
-                    await update.effective_message.reply_text("Cancelando...")
-                    error_handler.cleanup_orphaned_processes()
-                    logging.info("Driver closed")
-                    await update.effective_message.reply_text("Cancelado.")
-                    raise
-                except Exception as e:
-                    logging.error(
-                        f"Something went wrong... Comprueba el bot... 😔. {str(e)}",
-                        exc_info=True,
-                    )
-                    await update.effective_message.reply_text(
-                        "Something went wrong... Comprueba el bot... 😔"
-                    )
-                    raise
+            except TooManyRequestsException:
+                logging.info("[429] Too many requests")
+                logging.info("Waiting for 600 seconds...")
+                await asyncio.sleep(600)
+                continue
+
+            except RejectionURLException:
+                logging.info("[400] Rejected URL")
+                logging.info("Waiting for 3 seconds...")
+                await asyncio.sleep(3)
+                continue
+
+            except WebDriverException:
+                logging.info("[500] WebDriverException")
+                logging.info("Waiting for 3 seconds...")
+                await asyncio.sleep(3)
+                continue
+
+            except KeyboardInterrupt:
+                logging.error("Keyboard interrupt")
+                await update.effective_message.reply_text("Terminando...")
+                # error_handler.cleanup_orphaned_processes()
+                logging.info("Driver closed")
+                await update.effective_message.reply_text("Terminado.")
+                raise
+
+            except asyncio.CancelledError:
+                logging.info("Cancelling...")
+                await update.effective_message.reply_text("Cancelando...")
+                # error_handler.cleanup_orphaned_processes()
+                logging.info("Driver closed")
+                await update.effective_message.reply_text("Cancelado.")
+                raise
+
+            except Exception as e:
+                logging.error(
+                    f"Something went wrong... Comprueba el bot... 😔. {str(e)}",
+                    exc_info=True,
+                )
+                await update.effective_message.reply_text(
+                    "Something went wrong... Comprueba el bot... 😔"
+                )
+                raise
 
     async def _get_page(
         self,
@@ -205,12 +227,11 @@ class CitaBot:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
                 await watcher.open_extranjeria()
-                await asyncio.sleep(2)
+                await random_wait_async(start=1, end=5)
                 await watcher.select_city(context.province.value, operation_category)
-                await asyncio.sleep(2)
+                await random_wait_async(start=2, end=4)
                 await watcher.accept_cookie()
-                await asyncio.sleep(2)
-                implicit_random_wait(driver, seconds=2)
+                await random_wait_async(start=1, end=3.5)
                 await watcher.select_tramite(context.operation_code.value)
 
                 logging.info("[Watcher] Loaded initial page.")
@@ -291,95 +312,77 @@ class CitaBot:
         fast_forward_url: str,
         fast_forward_url2: str,
         operation_category: str,
-        error_handler: WebDriverErrorHandler,
     ):
         """Executes the cycle of the bot."""
-
-        @error_handler.handle_error
-        async def execute(
-            driver=driver,
-            context=context,
-            fast_forward_url=fast_forward_url,
-            fast_forward_url2=fast_forward_url2,
-            operation_category=operation_category,
-        ):
-            await self.get_page(
-                driver=driver,
-                context=context,
-                fast_forward_url=fast_forward_url,
-                fast_forward_url2=fast_forward_url2,
-                operation_category=operation_category,
-            )
-
-            # 1. Instructions page:
-            logging.info("[Step 1/6] Instructions page")
-            if not wait_for_element(driver, (By.ID, "btnEntrar"), 10):
-                logging.error("Timed out waiting for Instructions page to load")
-                return None
-
-            if (
-                os.environ.get("CITA_TEST")
-                and context.operation_code == OperationType.TOMA_HUELLAS
-            ):
-                logging.info("Instructions page loaded")
-                return True
-
-            driver.find_element(By.ID, "btnEntrar").send_keys(Keys.ENTER)
-            # 2. Personal info
-            logging.info("[Step 2/6] Personal info")
-            success = False
-
-            if context.operation_code == OperationType.TOMA_HUELLAS:
-                success = TomaHuellasStep2(driver, context).do()
-            elif context.operation_code == OperationType.RECOGIDA_DE_TARJETA:
-                success = RecogidaDeTarjetaStep2(driver, context).do()
-            elif context.operation_code == OperationType.SOLICITUD_ASILO:
-                success = SolicitudAsiloStep2(driver, context).do()
-            elif context.operation_code == OperationType.RENOVACION_ASILO:
-                success = RenovacionAsiloStep2(driver, context).do()
-            elif context.operation_code == OperationType.BREXIT:
-                success = BrexitStep2(driver, context).do()
-            elif context.operation_code == OperationType.CARTA_INVITACION:
-                success = CartaInvitacionStep2(driver, context).do()
-            elif context.operation_code in [
-                OperationType.CERTIFICADOS_NIE,
-                OperationType.CERTIFICADOS_NIE_NO_COMUN,
-                OperationType.CERTIFICADOS_RESIDENCIA,
-                OperationType.CERTIFICADOS_UE,
-            ]:
-                success = CertificadosStep2(driver, context).do()
-            elif context.operation_code == OperationType.AUTORIZACION_DE_REGRESO:
-                success = AutorizacionDeRegresoStep2(driver, context).do()
-            elif context.operation_code == OperationType.ASIGNACION_NIE:
-                success = AsignacionNieStep2(driver, context).do()
-
-            if not success:
-                return None
-
-            implicit_random_wait(driver, seconds=2)
-            driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
-
-            if not wait_for_element(driver, (By.ID, "btnConsultar"), 5):
-                logging.error("Timed out waiting for Solicitar page to load")
-                return None
-
-            if not wait_exact_time(driver, context):
-                logging.error("Timed out waiting for exact time")
-                return None
-
-            # 3. Solicitar cita:
-            selection_result = office_selection(driver, context)
-            if selection_result is None:
-                return None
-
-            # 4. Contact info:
-            return phone_mail(driver, context)
-
-        result = await execute(
+        # ZERO. Open the page
+        await self.get_page(
             driver=driver,
             context=context,
             fast_forward_url=fast_forward_url,
             fast_forward_url2=fast_forward_url2,
             operation_category=operation_category,
         )
-        return result
+
+        # 1. Instructions page:
+        logging.info("[Step 1/6] Instructions page")
+        if not wait_for_element(driver, (By.ID, "btnEntrar"), 10):
+            logging.error("Timed out waiting for Instructions page to load")
+            return None
+
+        if (
+            os.environ.get("CITA_TEST")
+            and context.operation_code == OperationType.TOMA_HUELLAS
+        ):
+            logging.info("Instructions page loaded")
+            return True
+
+        driver.find_element(By.ID, "btnEntrar").send_keys(Keys.ENTER)
+        # 2. Personal info
+        logging.info("[Step 2/6] Personal info")
+        success = False
+
+        if context.operation_code == OperationType.TOMA_HUELLAS:
+            success = TomaHuellasStep2(driver, context).do()
+        elif context.operation_code == OperationType.RECOGIDA_DE_TARJETA:
+            success = RecogidaDeTarjetaStep2(driver, context).do()
+        elif context.operation_code == OperationType.SOLICITUD_ASILO:
+            success = SolicitudAsiloStep2(driver, context).do()
+        elif context.operation_code == OperationType.RENOVACION_ASILO:
+            success = RenovacionAsiloStep2(driver, context).do()
+        elif context.operation_code == OperationType.BREXIT:
+            success = BrexitStep2(driver, context).do()
+        elif context.operation_code == OperationType.CARTA_INVITACION:
+            success = CartaInvitacionStep2(driver, context).do()
+        elif context.operation_code in [
+            OperationType.CERTIFICADOS_NIE,
+            OperationType.CERTIFICADOS_NIE_NO_COMUN,
+            OperationType.CERTIFICADOS_RESIDENCIA,
+            OperationType.CERTIFICADOS_UE,
+        ]:
+            success = CertificadosStep2(driver, context).do()
+        elif context.operation_code == OperationType.AUTORIZACION_DE_REGRESO:
+            success = AutorizacionDeRegresoStep2(driver, context).do()
+        elif context.operation_code == OperationType.ASIGNACION_NIE:
+            success = AsignacionNieStep2(driver, context).do()
+
+        if not success:
+            return None
+
+        implicit_random_wait(driver, seconds=2)
+        driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
+
+        if not wait_for_element(driver, (By.ID, "btnConsultar"), 5):
+            logging.error("Timed out waiting for Solicitar page to load")
+            return None
+
+        if not wait_exact_time(driver, context):
+            logging.error("Timed out waiting for exact time")
+            return None
+
+        # 3. Solicitar cita:
+        selection_result = office_selection(driver, context)
+        if selection_result is None:
+            return None
+
+        # 4. Contact info:
+        return phone_mail(driver, context)

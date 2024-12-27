@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional
 
 from undetected_chromedriver import Chrome
 
-
 __all__ = [
     "DocType",
     "OperationType",
