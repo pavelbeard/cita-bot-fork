@@ -140,9 +140,7 @@ async def request_appointment(
         proxy=False,
     )
 
-    tasks = asyncio.tasks.all_tasks()
-
-    for task in tasks:
+    for task in asyncio.tasks.all_tasks():
         if task.get_name() == "catch_cita":
             task.cancel()
             await update.effective_message.reply_text("La búsqueda reiniciada")
@@ -176,12 +174,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
 
-    for task in asyncio.tasks.all_tasks():
-        if task.get_name() == "catch_cita":
-            task.cancel()
-            await update.effective_message.reply_text("Cancelado.")
+    task = list(
+        map(
+            lambda task: task
+            for task in asyncio.tasks.all_tasks()
+            if task.get_name() == "catch_cita"
+        )
+    )
+
+    if len(task) > 0:
+        task[0].cancel()
+        await update.effective_message.reply_text("Cancelado.")
     else:
         await update.effective_message.reply_text("No hay tarea pendiente.")
+
 
 # START BOT
 def main() -> None:
