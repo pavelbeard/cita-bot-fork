@@ -5,3 +5,6 @@ class TooManyRequestsException(Exception):
 
 class RejectionURLException(Exception):
     pass
+
+class FastForwardInaccessibleException(Exception):
+    pass

@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 
 from citabot import (
-    CitaBotBuilder,
+    CitaBot,
     CustomerProfile,
     DocType,
     OperationType,
@@ -38,7 +38,6 @@ keyboard = InlineKeyboardMarkup(
 )
 
 user_data = {}
-tasks = {}
 
 
 # HANDLERS
@@ -141,23 +140,16 @@ async def request_appointment(
         proxy=False,
     )
 
-    if update.effective_user.id not in tasks:
-        await update.effective_message.reply_text("Bot started.")
-        task = asyncio.create_task(
-            CitaBotBuilder(context=customer).start(update, cycles=200)
-        )
-        tasks.update({update.effective_user.id: task})
+    tasks = asyncio.tasks.all_tasks()
 
+    for task in tasks:
+        if task.get_name() == "catch_cita":
+            task.cancel()
+            await update.effective_message.reply_text("La búsqueda reiniciada")
     else:
-        new_task = asyncio.create_task(
-            CitaBotBuilder(context=customer).start(update, cycles=200)
-        )
-        old_task = tasks.pop(update.effective_user.id)
-        old_task.cancel()
-
-        tasks.update({update.effective_user.id: new_task})
-
-        await update.effective_message.reply_text("La búsqueda reiniciada")
+        await update.effective_message.reply_text("Bot started.")
+        task_builder = CitaBot(context=customer, update=update)
+        asyncio.create_task(task_builder.start(cycles=200), name="catch_cita")
 
 
 async def reveal_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -184,14 +176,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
 
-    if update.effective_user.id in tasks:
-        task: asyncio.Task = tasks.pop(update.effective_user.id)
-        task.cancel()
-
-        await update.effective_message.reply_text("Cancelado...")
+    for task in asyncio.tasks.all_tasks():
+        if task.get_name() == "catch_cita":
+            task.cancel()
+            await update.effective_message.reply_text("Cancelado.")
     else:
-        await update.effective_message.reply_text("No hay tarea pendiente")
-
+        await update.effective_message.reply_text("No hay tarea pendiente.")
 
 # START BOT
 def main() -> None:

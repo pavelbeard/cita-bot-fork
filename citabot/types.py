@@ -1,8 +1,9 @@
+import os
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from undetected_chromedriver import Chrome
 
@@ -158,14 +159,16 @@ class Province(str, Enum):
     VALLADOLID = "47"
     ZAMORA = "49"
     ZARAGOZA = "50"
-    
+
+
 class Browsers(str, Enum):
     CHROME = "Google Chrome"
     FIREFOX = "Firefox"
     SAFARI = "Safari"
     OPERA = "Opera"
     EDGE = "Edge"
-    
+
+
 class Drivers(str, Enum):
     CHROME = "undetected_chromedriver"
     FIREFOX = "geckodriver"
@@ -210,8 +213,8 @@ class CustomerProfile:
     recaptcha_solver: Any = None
     image_captcha_solver: Any = None
     current_solver: Any = None
-    
-    # 
+
+    #
     proxy: Optional[bool] = False
 
     def __post_init__(self):
@@ -219,6 +222,36 @@ class CustomerProfile:
             assert (
                 len(self.offices) == 1
             ), "Indicate the office where you need to pick up the card"
+
+
+class InitPageTool(str, Enum):
+    WATCHER = "watcher"
+    FAST_FORWARD = "fast_forward"
+
+
+@dataclass
+class BrowserConfig:
+    headless: bool = False
+    proxy: Optional[bool] = False
+    download_dir: str = os.getcwd()
+    driver_path: Optional[str] = None
+    custom_user_agent: Optional[str] = None
+    additional_options: Dict[str, Any] = None
+
+
+@dataclass
+class OperationConfig:
+    """Configuration for different categories and parameters"""
+
+    category: str
+    param: str = "tramiteGrupo[1]"
+
+    def get_urls(self, provincial_value: str, operation_code: str):
+        base_url = f"https://icp.administracionelectronica.gob.es/{self.category}"
+        return (
+            f"{base_url}/citar?p={provincial_value}",
+            f"{base_url}/acInfo?{self.param}={operation_code}",
+        )
 
 
 @dataclass

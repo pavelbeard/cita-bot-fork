@@ -4,10 +4,8 @@ import logging
 import math
 import random
 from datetime import datetime as dt
-import sys
 from typing import Dict
 
-import psutil
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -81,11 +79,28 @@ async def random_wait_async(seconds: int = 0, start: int = 2, end: int = 5):
     await wait
 
 
-def wait_exact_time(driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile):
-    if context.wait_exact_time:
-        WebDriverWait(driver, 1200).until(
-            lambda _x: [dt.now().minute, dt.now().second] in context.wait_exact_time
+def wait_exact_time(driver: Chrome | Firefox, context: CustomerProfile):
+    try:
+        if context.wait_exact_time:
+            WebDriverWait(driver, 1200).until(
+                lambda _x: [dt.now().minute, dt.now().second] in context.wait_exact_time
+            )
+        return True
+    except TimeoutException:
+        logging.error("Timed out waiting for exact time")
+        return None
+
+
+def wait_for_element(driver: Chrome | Firefox, by: By, timeout: int = DELAY):
+    try:
+        by_selector = by
+        WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located(by_selector)
         )
+        return True
+    except TimeoutException:
+        logging.info("Timed out waiting for element to load")
+        return None
 
 
 def body_text(driver: Chrome | Firefox | Safari | Edge):
@@ -99,14 +114,29 @@ def body_text(driver: Chrome | Firefox | Safari | Edge):
         return ""
 
 
-def handle_blocking_situations(waiter: WebDriverWait):
-    title = waiter.until(lambda x: x.title)
-    if "Request Rejected" in title:
-        raise RejectionURLException
-    elif "429 Too Many Requests" in title:
-        raise TooManyRequestsException
-    else:
-        return None
+async def handle_blocking_situations(
+    driver: Chrome | Firefox, default_interval: int = 1
+):
+    while True:
+        try:
+            WebDriverWait(driver, default_interval).until(
+                EC.text_to_be_present_in_element(
+                    (By.TAG_NAME, "h1"), "Too Many Requests"
+                )
+            )
+            raise TooManyRequestsException
+        except TimeoutException:
+            pass
+
+        try:
+            WebDriverWait(driver, default_interval).until(
+                EC.text_to_be_present_in_element(
+                    (By.TAG_NAME, "body"), "Request Rejected"
+                )
+            )
+            raise RejectionURLException
+        except TimeoutException:
+            pass
 
 
 class Watcher:
@@ -129,11 +159,9 @@ class Watcher:
         self.driver.get(
             "https://icp.administracionelectronica.gob.es/icpplus/index.html/"
         )
-        handle_blocking_situations(self.waiter)
         logging.info("Extranjeria page loaded")
 
     async def select_city(self, city, operation_category):
-        handle_blocking_situations(self.waiter)
         __address_level1 = {"by": By.XPATH, "value": self.selectAddressLevel1}
         address_level1 = self.driver.find_element(**__address_level1)
 
@@ -147,7 +175,6 @@ class Watcher:
         logging.info("City accepted")
 
     async def accept_cookie(self):
-        handle_blocking_situations(self.waiter)
         cookie_accept_button = self.driver.find_element(
             By.ID, "cookie_action_close_header"
         )
@@ -157,7 +184,6 @@ class Watcher:
         logging.info("Cookie accepted")
 
     async def select_tramite(self, tramite):
-        handle_blocking_situations(self.waiter)
         __tramites = {"by": By.XPATH, "value": self.selectTramites}
         tramites_select = self.driver.find_element(**__tramites)
         self.waiter.until(lambda x: tramites_select.is_displayed())
@@ -170,21 +196,6 @@ class Watcher:
         accept_button2.send_keys(Keys.ENTER)
 
         return self.driver
-
-
-def kill_process_by_name(name: str) -> None:
-    """By the connection lost error, the driver process will be killed by psutil"""
-    for proc in psutil.process_iter(attrs=["name", "pid"]):
-        try:
-            if proc.info["name"] == name:
-                logging.info(f"Killing process {proc.info['pid']}")
-                if sys.platform.startswith("win") or sys.platform.startswith("cygwin"):
-                    proc.kill()
-                else:
-                    proc.terminate()
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
-            logging.error(e)
-            continue
 
 
 def open_json_file(path) -> Dict[str, str]:
