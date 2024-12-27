@@ -131,12 +131,15 @@ async def handle_blocking_situations(
         try:
             WebDriverWait(driver, default_interval).until(
                 EC.text_to_be_present_in_element(
-                    (By.TAG_NAME, "body"), "Request Rejected"
+                    (By.TAG_NAME, "body"),
+                    "The requested URL was rejected. Please consult with your administrador.",
                 )
             )
             raise RejectionURLException
         except TimeoutException:
             pass
+
+        await asyncio.sleep(default_interval)
 
 
 class Watcher:
@@ -163,36 +166,46 @@ class Watcher:
 
     async def select_city(self, city, operation_category):
         __address_level1 = {"by": By.XPATH, "value": self.selectAddressLevel1}
+        self.waiter.until(
+            EC.presence_of_element_located(tuple(__address_level1.values()))
+        )
         address_level1 = self.driver.find_element(**__address_level1)
 
         select1 = Select(address_level1)
         select1.select_by_value(f"/{operation_category}/citar?p={city}&locale=es")
 
-        accept_button = self.driver.find_element(By.ID, "btnAceptar")
-        self.waiter.until(lambda x: accept_button.is_displayed())
+        __accept_button = {"by": By.ID, "value": "btnAceptar"}
+        self.waiter.until(
+            EC.presence_of_element_located(tuple(__accept_button.values()))
+        )
+        accept_button = self.driver.find_element(**__accept_button)
         accept_button.send_keys(Keys.ENTER)
 
         logging.info("City accepted")
 
     async def accept_cookie(self):
-        cookie_accept_button = self.driver.find_element(
-            By.ID, "cookie_action_close_header"
+        __cookie_accept_button = {"by": By.ID, "value": "cookie_action_close_header"}
+        self.waiter.until(
+            EC.presence_of_element_located(tuple(__cookie_accept_button.values()))
         )
-        self.waiter.until(lambda x: cookie_accept_button.is_displayed())
+        cookie_accept_button = self.driver.find_element(**__cookie_accept_button)
         cookie_accept_button.send_keys(Keys.ENTER)
 
         logging.info("Cookie accepted")
 
     async def select_tramite(self, tramite):
         __tramites = {"by": By.XPATH, "value": self.selectTramites}
+        self.waiter.until(EC.presence_of_element_located(tuple(__tramites.values())))
         tramites_select = self.driver.find_element(**__tramites)
-        self.waiter.until(lambda x: tramites_select.is_displayed())
 
         select2 = Select(tramites_select)
         select2.select_by_value(tramite)
 
-        accept_button2 = self.driver.find_element(By.ID, "btnAceptar")
-        self.waiter.until(lambda x: accept_button2.is_displayed())
+        __accept_button2 = {"by": By.ID, "value": "btnAceptar"}
+        self.waiter.until(
+            EC.presence_of_element_located(tuple(__accept_button2.values()))
+        )
+        accept_button2 = self.driver.find_element(**__accept_button2)
         accept_button2.send_keys(Keys.ENTER)
 
         return self.driver

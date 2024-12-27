@@ -10,7 +10,6 @@ import psutil
 import urllib3
 from fake_useragent import UserAgent
 from selenium.common.exceptions import (
-    NoSuchElementException,
     TimeoutException,
     WebDriverException,
 )
@@ -22,7 +21,6 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 
 from citabot.constants import LIVE_PROXIES
-from citabot.exceptions import RejectionURLException, TooManyRequestsException
 from citabot.types import BrowserConfig, Browsers, CustomerProfile
 from citabot.utils import handle_blocking_situations
 
@@ -301,7 +299,7 @@ class WebDriverErrorHandler:
         async def wrapper(*args, **kwargs):
             attempt = 0
             last_exception = None
-            driver = kwargs.get("driver")
+            driver: Chrome | Firefox = kwargs.get("driver")
             context = kwargs.get("context")
 
             while attempt < self.max_retries:
@@ -309,33 +307,50 @@ class WebDriverErrorHandler:
                     function_result = await func(*args, **kwargs)
                     return function_result
 
-                except TooManyRequestsException as e:
-                    logging.warning(f"Requests limit exceeded on attempt {attempt}")
-                    delay = self.exponential_backoff(attempt)
-                    logging.info(
-                        f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
+                # region: TooManyRequestsException
+                # except TooManyRequestsException as e:
+                #     logging.warning(f"Requests limit exceeded on attempt {attempt}")
+                #     delay = self.exponential_backoff(attempt)
+                #     logging.info(
+                #         f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
+                #     )
+                #     await asyncio.sleep(delay)
+                #     last_exception = e
+
+                # except RejectionURLException as e:
+                #     logging.warning("Rejected URL on attempt {attempt}")
+
+                #     if driver:
+                #         new_driver = await self.refresh_session(kwargs["driver"])
+                #         kwargs["driver"] = new_driver
+
+                #     logging.info("[Rejection URL] Waiting for 3 seconds before retry.")
+                #     await asyncio.sleep(3)
+                #     last_exception = e
+                # endregion
+
+                except WebDriverException as e:
+                    logging.warning(
+                        f"WebDriverException occurred on attempt {attempt}: {str(e)}"
                     )
-                    await asyncio.sleep(delay)
-                    last_exception = e
+                    logging.error(f"WebDriverException: {e}", exc_info=True)
 
-                except RejectionURLException as e:
-                    logging.warning("Rejected URL on attempt {attempt}")
-
-                    if driver:
-                        new_driver = await self.refresh_session(kwargs["driver"])
-                        kwargs["driver"] = new_driver
-
-                    logging.info("[Rejection URL] Waiting for 3 seconds before retry.")
+                    title = driver.title
+                    delay = self.exponential_backoff(attempt)
                     await asyncio.sleep(3)
-                    last_exception = e
-
-                except NoSuchElementException as e:
-                    logging.warning("No such element on attempt {attempt}")
-                    delay = self.exponential_backoff(attempt)
-                    logging.info(
-                        f"[Blocking situation] Waiting for {delay:.2f} seconds before retry."
-                    )
-                    await asyncio.sleep(delay)
+                        
+                    if title == "429 Too Many Requests":
+                        logging.info(
+                            f"[429 Too Many Requests] Waiting for {delay:.2f} seconds before retry."
+                        )
+                        await asyncio.sleep(delay)
+                    
+                    if driver and context and title == "Request Rejected":
+                        new_driver = await self.recover_driver(
+                            driver=driver, context=context
+                        )
+                        await asyncio.sleep(3)
+                        
                     last_exception = e
 
                 except urllib3.exceptions.HTTPError as e:
@@ -351,25 +366,13 @@ class WebDriverErrorHandler:
 
                     last_exception = e
 
-                except WebDriverException as e:
-                    logging.warning(
-                        f"WebDriverException occurred on attempt {attempt}: {str(e)}"
-                    )
-                    logging.error(f"WebDriverException: {e}", exc_info=True)
-                    if driver and context:
-                        new_driver = await self.recover_driver(
-                            driver=kwargs["driver"], context=kwargs["context"]
-                        )
-                        kwargs["driver"] = new_driver
-                    last_exception = e
-
                 except TimeoutException as e:
                     logging.warning(
                         f"TimeoutException occurred on attempt {attempt}: {str(e)}"
                     )
                     logging.error(f"TimeoutException: {e}")
                     last_exception = e
-                    
+
                     attempt += 1
 
                 except Exception as e:
@@ -395,9 +398,11 @@ class WebDriverErrorHandler:
             ua = DriverBuilder.user_agent()
 
             if isinstance(driver, Chrome):
-                driver.add_argument("--user-agent=" + ua)
+                pass
+                # driver("--user-agent=" + ua)
             elif isinstance(driver, Firefox):
-                driver.set_preference("general.useragent.override", ua)
+                pass
+                # driver.add("general.useragent.override", ua)
 
             return driver
 

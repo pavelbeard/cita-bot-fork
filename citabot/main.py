@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Any, Dict
 
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -204,8 +205,12 @@ class CitaBot:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
                 await watcher.open_extranjeria()
+                await asyncio.sleep(2)
                 await watcher.select_city(context.province.value, operation_category)
+                await asyncio.sleep(2)
                 await watcher.accept_cookie()
+                await asyncio.sleep(2)
+                implicit_random_wait(driver, seconds=2)
                 await watcher.select_tramite(context.operation_code.value)
 
                 logging.info("[Watcher] Loaded initial page.")
@@ -242,6 +247,8 @@ class CitaBot:
                     return True
 
         except FastForwardInaccessibleException:
+            return False
+        except TimeoutException:
             return False
         except TooManyRequestsException:
             raise
