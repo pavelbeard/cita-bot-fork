@@ -30,7 +30,7 @@ from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 from citabot.constants import DELAY, REFRESH_PAGE_CYCLES
 from citabot.states import confirmed_cita
 from citabot.types import CustomerProfile, OperationType
-from citabot.utils import body_text, implicit_random_wait
+from citabot.utils import body_text, random_wait_async
 
 from .speaker import new_speaker
 
@@ -38,7 +38,7 @@ speaker = new_speaker()
 
 
 # 5. Cita selection
-def cita_selection(driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile):
+async def cita_selection(driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile):
     resp_text = body_text(driver)
 
     if "DISPONE DE 5 MINUTOS" in resp_text:
@@ -50,7 +50,7 @@ def cita_selection(driver: Chrome | Firefox | Safari | Edge, context: CustomerPr
         if not position:
             return None
 
-        implicit_random_wait(driver, seconds=2)
+        await random_wait_async(2)
         success = process_captcha(driver, context)
         if not success:
             return None
@@ -64,7 +64,7 @@ def cita_selection(driver: Chrome | Firefox | Safari | Edge, context: CustomerPr
             pass
 
         driver.execute_script("envia();")
-        implicit_random_wait(driver, seconds=0.5)
+        await random_wait_async(0.5)
         driver.switch_to.alert.accept()
     elif "Seleccione una de las siguientes citas disponibles" in resp_text:
         logging.info("[Step 4/6] Cita attempt -> selection hit!")
@@ -103,7 +103,7 @@ def cita_selection(driver: Chrome | Firefox | Safari | Edge, context: CustomerPr
                 return None
             slot = slots[best_date][0]
 
-            implicit_random_wait(driver, seconds=2)
+            await random_wait_async(2)
             success = process_captcha(driver, context)
             if not success:
                 return None
@@ -390,7 +390,7 @@ def select_office(driver: Chrome | Firefox | Safari | Edge, context: CustomerPro
         return None
 
 
-def office_selection(
+async def office_selection(
     driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile
 ):
     driver.execute_script("enviar('solicitud');")
@@ -402,7 +402,7 @@ def office_selection(
             logging.info("[Step 2/6] Office selection")
 
             # Office selection:
-            implicit_random_wait(driver, seconds=0.3)
+            await random_wait_async(0.3)
             try:
                 WebDriverWait(driver, DELAY).until(
                     EC.presence_of_element_located((By.ID, "btnSiguiente"))
@@ -413,7 +413,7 @@ def office_selection(
 
             res = select_office(driver, context)
             if res is None:
-                implicit_random_wait(driver, seconds=5)
+                await random_wait_async(5)
                 driver.refresh()
                 continue
 
@@ -421,7 +421,7 @@ def office_selection(
             btn.send_keys(Keys.ENTER)
             return True
         elif "En este momento no hay citas disponibles" in resp_text:
-            implicit_random_wait(driver, seconds=5)
+            await random_wait_async(5)
             driver.refresh()
             continue
         else:
@@ -429,7 +429,7 @@ def office_selection(
             return None
 
 
-def phone_mail(driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile):
+async def phone_mail(driver: Chrome | Firefox | Safari | Edge, context: CustomerProfile):
     try:
         WebDriverWait(driver, DELAY).until(
             EC.presence_of_element_located((By.ID, "txtTelefonoCitado"))

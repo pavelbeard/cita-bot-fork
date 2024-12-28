@@ -41,7 +41,6 @@ from citabot.types import (
 from citabot.utils import (
     Watcher,
     body_text,
-    implicit_random_wait,
     random_wait_async,
     wait_exact_time,
     wait_for_element,
@@ -137,8 +136,8 @@ class CitaBot:
             try:
                 if not CitaBot.too_many_requests_trigger:
                     if i != 0 and i % 3 == 0:
-                        logging.info("Waiting for 10 minutes...")
-                        await asyncio.sleep(600)
+                        logging.info("Waiting for 8 minutes...")
+                        await asyncio.sleep(480)
                 else:
                     CitaBot.too_many_requests_trigger = False
 
@@ -251,9 +250,9 @@ class CitaBot:
                     driver.delete_all_cookies()
                     driver.set_page_load_timeout(300 if context.first_load else 50)
                     # Fix chromedriver 103 bug
-                    implicit_random_wait(driver, seconds=1)
+                    await asyncio.sleep(1)
                     driver.get(fast_forward_url)
-                    implicit_random_wait(driver, seconds=5)
+                    await asyncio.sleep(5)
                     if context.first_load:
                         try:
                             driver.execute_script("window.localStorage.clear();")
@@ -262,7 +261,7 @@ class CitaBot:
                             logging.error(e)
                             pass
                     driver.get(fast_forward_url2)
-                    implicit_random_wait(driver, seconds=5)
+                    await asyncio.sleep(5)
 
                     resp_text = body_text(driver)
                     if "CITA PREVIA EXTRANJERÍA" not in resp_text:
@@ -376,7 +375,7 @@ class CitaBot:
         if not success:
             return None
 
-        implicit_random_wait(driver, seconds=2)
+        await random_wait_async(seconds=2)
         driver.find_element(By.ID, "btnEnviar").send_keys(Keys.ENTER)
 
         if not wait_for_element(driver, (By.ID, "btnConsultar"), 5):
@@ -388,9 +387,9 @@ class CitaBot:
             return None
 
         # 3. Solicitar cita:
-        selection_result = office_selection(driver, context)
+        selection_result = await office_selection(driver, context)
         if selection_result is None:
             return None
 
         # 4. Contact info:
-        return phone_mail(driver, context)
+        return await phone_mail(driver, context)

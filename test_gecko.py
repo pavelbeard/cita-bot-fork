@@ -40,14 +40,9 @@ def test_gecko():
 
 def test_chrome():
     from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
-    from selenium.webdriver.chrome.service import Service as ChromeService
     from selenium.webdriver.chrome.options import Options as ChromeOptions
 
     options = ChromeOptions()
-
-    service = ChromeService(
-        executable_path="/Users/pavelbeard/Documents/drivers/chromedriver",
-    )
 
     driver = Chrome(
         # service=service,
@@ -180,7 +175,6 @@ def test_proxies():
 
 def test_webdriver_detection():
     from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
 
     chrome_options = Options()
