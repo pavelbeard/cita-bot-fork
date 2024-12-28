@@ -171,6 +171,8 @@ class DriverBuilder:
                     "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
                 )
 
+            DriverBuilder.driver.maximize_window()
+            
             return DriverBuilder.driver
         except Exception as e:
             logging.error("Failed to build driver: %s", str(e))
