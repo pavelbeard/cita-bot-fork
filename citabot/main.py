@@ -189,7 +189,7 @@ class CitaBot:
                 continue
 
             except WebDriverException:
-                logging.info("[500] WebDriverException")
+                logging.error("[500] WebDriverException", exc_info=True)
                 logging.info("Waiting for 3 seconds...")
                 await asyncio.sleep(3)
                 continue
@@ -232,6 +232,7 @@ class CitaBot:
         try:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
+                
                 await watcher.open_extranjeria()
                 await random_wait_async(start=1, end=5)
                 await watcher.select_city(context.province.value, operation_category)

@@ -137,7 +137,7 @@ def body_text(driver: Chrome | Firefox | Safari | Edge):
 
 
 class Watcher:
-    def __init__(self, driver: Chrome):
+    def __init__(self, driver: Chrome | Firefox):
         self.driver = driver
         self.waiter = WebDriverWait(driver, 4)
 
@@ -153,10 +153,16 @@ class Watcher:
         self.cookieAcceptBtn = "#cookie_action_close_header"
 
     async def open_extranjeria(self):
+        self.waiter.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        
         self.driver.delete_all_cookies()
-        self.driver.execute_script("window.localStorage.clear();")
-        self.driver.execute_script("window.sessionStorage.clear();")
-
+        
+        try:
+            self.driver.execute_script("window.localStorage.clear();")
+            self.driver.execute_script("window.sessionStorage.clear();")
+        except Exception:
+            logging.error("[500] Javascript error. Clearing localStorage and sessionStorage didn't work.")
+            
         self.driver.get(
             "https://icp.administracionelectronica.gob.es/icpplus/index.html/"
         )
