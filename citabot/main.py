@@ -142,7 +142,9 @@ class CitaBot:
                 else:
                     CitaBot.too_many_requests_trigger = False
 
-                with DriverBuilder(context) as driver:
+                driver_builder = DriverBuilder(context)
+                
+                with driver_builder.create_driver() as driver:
                     self.driver = driver
                     logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
                     logging.info(

@@ -152,11 +152,12 @@ class DriverBuilder:
         """Create a new driver instance."""
         try:
             driver = self.build()
+            self.driver = driver
             yield driver
         finally:
-            if DriverBuilder.driver:
+            if self.driver:
                 try:
-                    DriverBuilder.driver.quit()
+                    self.driver.quit()
                 except Exception as e:
                     logging.error("Error while closing driver: %s", str(e))
 
