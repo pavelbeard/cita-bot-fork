@@ -269,6 +269,21 @@ class CitaBot:
                         logging.info("fast forward not loaded, starting from main page")
                         raise FastForwardInaccessibleException
 
+                    # accept cookies
+                    try:
+                        __cookie_accept_button = {"by": By.ID, "value": "cookie_action_close_header"}
+
+                        if not wait_for_element(self.driver, tuple(__cookie_accept_button.values())):
+                            raise Exception
+
+                        cookie_accept_button = self.driver.find_element(**__cookie_accept_button)
+                        cookie_accept_button.send_keys(Keys.ENTER)
+                        
+                        driver.delete_all_cookies()
+                        
+                    except Exception:
+                        logging.error("[500] WebDriverException error. Accepting cookies didn't work.")
+                    
                     context.first_load = False
 
                     logging.info("[Fast forward] Loaded initial page.")
