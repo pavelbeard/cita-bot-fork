@@ -136,13 +136,12 @@ class CitaBot:
             try:
                 if not CitaBot.too_many_requests_trigger:
                     if i != 0 and i % 3 == 0:
-                        logging.info("Waiting for 8 minutes...")
-                        await asyncio.sleep(480)
+                        await random_wait_async(start=320, end=600)
                 else:
                     CitaBot.too_many_requests_trigger = False
 
                 driver_builder = DriverBuilder(context)
-                
+
                 with driver_builder.create_driver() as driver:
                     self.driver = driver
                     logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")

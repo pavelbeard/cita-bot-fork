@@ -73,9 +73,12 @@ async def random_wait_async(seconds: int = 0, start: int = 2, end: int = 5):
         end (int, optional): ceil value of random number. Defaults to 5.
     """
     if seconds == 0:
-        wait = asyncio.sleep(generate_random_int(start, end))
+        random_seconds = generate_random_int(start, end)
+        wait = asyncio.sleep(random_seconds)
+        logging.info(f"Waiting for {random_seconds} seconds...")
     else:
         wait = asyncio.sleep(seconds)
+        logging.info(f"Waiting for {seconds} seconds...")
 
     await wait
 
@@ -132,6 +135,7 @@ def body_text(driver: Chrome | Firefox | Safari | Edge):
         logging.info("Timed out waiting for body to load")
         return ""
 
+
 class Watcher:
     def __init__(self, driver: Chrome):
         self.driver = driver
@@ -152,7 +156,7 @@ class Watcher:
         self.driver.delete_all_cookies()
         self.driver.execute_script("window.localStorage.clear();")
         self.driver.execute_script("window.sessionStorage.clear();")
-        
+
         self.driver.get(
             "https://icp.administracionelectronica.gob.es/icpplus/index.html/"
         )
@@ -163,7 +167,7 @@ class Watcher:
 
         if not wait_for_element(self.driver, tuple(__address_level1.values())):
             return None
-        
+
         address_level1 = self.driver.find_element(**__address_level1)
 
         select1 = Select(address_level1)
