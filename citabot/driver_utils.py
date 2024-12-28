@@ -56,13 +56,17 @@ class DriverBuilder:
         """Configure Chrome specific options."""
         options = ChromeOptions()
 
+        # disable detection
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option(
+            "excludeSwitches", ["enable-automation", "enable-logging"]
+        )
+        options.add_experimental_option("useAutomationExtension", False)
+
         # configure security and performance
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--disable-gpu")
-
-        # set user agent
-        options.add_argument("--user-agent=" + DriverBuilder.user_agent())
 
         if self.config.headless:
             options.add_argument("--headless")
@@ -103,6 +107,11 @@ class DriverBuilder:
         # set user agent
         options.set_preference("general.useragent.override", DriverBuilder.user_agent())
 
+        # disable detection
+        options.set_preference("dom.webdriver.enabled", False)
+        options.set_preference("useAutomationExtension", False)
+        options.set_preference("devtools.jsonview.enabled", False)
+
         if self.config.headless:
             options.add_argument("--headless")
 
@@ -126,6 +135,25 @@ class DriverBuilder:
                     options=options,
                     service=service if self.config.driver_path else None,
                 )
+
+                # Additional code to modify navigator.webdriver property
+                DriverBuilder.driver.execute_cdp_cmd(
+                    "Page.addScriptToEvaluateOnNewDocument",
+                    {
+                        "source": """
+                        Object.defineProperty(navigator, 'webdriver', {
+                            get: () => undefined
+                        })
+                    """
+                    },
+                )
+
+                # set user agent
+                DriverBuilder.driver.execute_cdp_cmd(
+                    "Network.setUserAgentOverride",
+                    {"userAgent": DriverBuilder.user_agent()},
+                )
+
             elif self.browser_type == Browsers.FIREFOX:
                 options = self.configure_firefox_options()
                 service = FirefoxService(
@@ -138,9 +166,10 @@ class DriverBuilder:
                     service=service if self.config.driver_path else None,
                 )
 
-            DriverBuilder.driver.execute_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-            )
+                # Additional code to modify navigator.webdriver property
+                DriverBuilder.driver.execute_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+                )
 
             return DriverBuilder.driver
         except Exception as e:
