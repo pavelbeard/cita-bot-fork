@@ -57,6 +57,7 @@ class DriverBuilder:
         options = ChromeOptions()
 
         # disable detection
+        options.add_argument("--incognito")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option(
             "excludeSwitches", ["enable-automation", "enable-logging"]
@@ -111,6 +112,7 @@ class DriverBuilder:
         options.set_preference("dom.webdriver.enabled", False)
         options.set_preference("useAutomationExtension", False)
         options.set_preference("devtools.jsonview.enabled", False)
+        options.set_preference("browser.privatebrowsing.autostart", True)
 
         if self.config.headless:
             options.add_argument("--headless")
