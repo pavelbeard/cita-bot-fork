@@ -197,7 +197,15 @@ class Watcher:
 
         cookie_accept_button = self.driver.find_element(**__cookie_accept_button)
         cookie_accept_button.send_keys(Keys.ENTER)
-
+        
+        self.driver.delete_all_cookies()
+        
+        try:
+            self.driver.execute_script("window.localStorage.clear();")
+            self.driver.execute_script("window.sessionStorage.clear();")
+        except Exception:
+            pass
+        
         logging.info("Cookie accepted")
 
     async def select_tramite(self, tramite):
