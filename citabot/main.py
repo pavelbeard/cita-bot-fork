@@ -32,6 +32,7 @@ from citabot.tramites import (
     TomaHuellasStep2,
 )
 from citabot.types import (
+    Browsers,
     CustomerProfile,
     InitPageTool,
     OperationConfig,
@@ -134,13 +135,9 @@ class CitaBot:
 
         for i in range(cycles):
             try:
-                if not CitaBot.too_many_requests_trigger:
-                    if i != 0 and i % 3 == 0:
-                        await random_wait_async(start=320, end=600)
-                else:
-                    CitaBot.too_many_requests_trigger = False
-
-                driver_builder = DriverBuilder(context)
+                driver_builder = DriverBuilder(
+                    context=context, browser_type=Browsers.CHROME
+                )
 
                 with driver_builder.create_driver() as driver:
                     self.driver = driver
@@ -220,6 +217,8 @@ class CitaBot:
                 )
                 raise
 
+            await random_wait_async(start=300, end=360)
+
     async def _get_page(
         self,
         driver: Chrome | Firefox,
@@ -232,7 +231,7 @@ class CitaBot:
         try:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
-                
+
                 await watcher.open_extranjeria()
                 await random_wait_async(start=1, end=5)
                 await watcher.select_city(context.province.value, operation_category)
@@ -271,19 +270,28 @@ class CitaBot:
 
                     # accept cookies
                     try:
-                        __cookie_accept_button = {"by": By.ID, "value": "cookie_action_close_header"}
+                        __cookie_accept_button = {
+                            "by": By.ID,
+                            "value": "cookie_action_close_header",
+                        }
 
-                        if not wait_for_element(self.driver, tuple(__cookie_accept_button.values())):
+                        if not wait_for_element(
+                            self.driver, tuple(__cookie_accept_button.values())
+                        ):
                             raise Exception
 
-                        cookie_accept_button = self.driver.find_element(**__cookie_accept_button)
+                        cookie_accept_button = self.driver.find_element(
+                            **__cookie_accept_button
+                        )
                         cookie_accept_button.send_keys(Keys.ENTER)
-                        
+
                         driver.delete_all_cookies()
-                        
+
                     except Exception:
-                        logging.error("[500] WebDriverException error. Accepting cookies didn't work.")
-                    
+                        logging.error(
+                            "[500] WebDriverException error. Accepting cookies didn't work."
+                        )
+
                     context.first_load = False
 
                     logging.info("[Fast forward] Loaded initial page.")

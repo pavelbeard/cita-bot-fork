@@ -115,7 +115,7 @@ async def request_appointment(
         auto_office=True,
         driver_path=settings.get(
             "driver_path",
-            "/Users/pavelbeard/Documents/Projects/cita_catcher/src/drivers/geckodriver",
+            "/Users/pavelbeard/Documents/drivers/chromedriver",
         ),
         save_artifacts=True,  # Record available offices / take available slots screenshot
         province=Province.ALICANTE,  # put your province here
@@ -176,9 +176,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     task = list(
         map(
-            lambda task: task
-            for task in asyncio.tasks.all_tasks()
-            if task.get_name() == "catch_cita"
+            lambda task: task,
+            [
+                task
+                for task in asyncio.tasks.all_tasks()
+                if task.get_name() == "catch_cita"
+            ],
         )
     )
 
