@@ -78,6 +78,8 @@ class CitaBot:
     }
 
     too_many_requests_trigger = False
+    close_trigger = False
+    cancel_trigger = False
 
     def __init__(self, context: CustomerProfile, update: Update = None):
         self.update = update
@@ -174,36 +176,26 @@ class CitaBot:
 
             except TooManyRequestsException:
                 logging.info("[429] Too many requests")
-                logging.info("Waiting for 600 seconds...")
-                CitaBot.too_many_requests_trigger = True
-                await asyncio.sleep(600)
                 continue
 
             except RejectionURLException:
                 logging.info("[400] Rejected URL")
-                logging.info("Waiting for 3 seconds...")
-                await asyncio.sleep(3)
                 continue
 
             except WebDriverException:
                 logging.error("[500] WebDriverException", exc_info=True)
-                logging.info("Waiting for 3 seconds...")
-                await asyncio.sleep(3)
                 continue
 
             except KeyboardInterrupt:
                 logging.error("Keyboard interrupt")
-                await update.effective_message.reply_text("Terminando...")
-                # error_handler.cleanup_orphaned_processes()
-                logging.info("Driver closed")
+                CitaBot.close_trigger = True
                 await update.effective_message.reply_text("Terminado.")
                 raise
 
             except asyncio.CancelledError:
                 logging.info("Cancelling...")
                 await update.effective_message.reply_text("Cancelando...")
-                # error_handler.cleanup_orphaned_processes()
-                logging.info("Driver closed")
+                CitaBot.cancel_trigger = True
                 await update.effective_message.reply_text("Cancelado.")
                 raise
 
@@ -216,8 +208,9 @@ class CitaBot:
                     "Something went wrong... Comprueba el bot... 😔"
                 )
                 raise
-
-            await random_wait_async(start=300, end=360)
+            finally:
+                if not CitaBot.cancel_trigger or not CitaBot.close_trigger:
+                    await random_wait_async(start=300, end=360)
 
     async def _get_page(
         self,
