@@ -395,7 +395,7 @@ async def office_selection(
 ):
     driver.execute_script("enviar('solicitud');")
 
-    for i in range(REFRESH_PAGE_CYCLES):
+    for _ in range(REFRESH_PAGE_CYCLES):
         resp_text = body_text(driver)
 
         if "Seleccione la oficina donde solicitar la cita" in resp_text:
