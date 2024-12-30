@@ -159,7 +159,10 @@ class CitaBot:
 
                     with driver_builder.create_driver() as driver:
                         self.driver = driver
-                        logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
+                        current_task = asyncio.tasks.current_task().get_name()
+                        logging.info(
+                            f"\033[33m[{current_task}] [Attempt: {i + 1}/{cycles}]\033[0m"
+                        )
                         logging.info(
                             f"🔄 Trying to catch cita en {context.province.name}. Attempt {i + 1}/{cycles}"
                         )
