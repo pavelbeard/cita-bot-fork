@@ -278,7 +278,7 @@ class CitaBot:
                         )
                         cookie_accept_button.send_keys(Keys.ENTER)
 
-                        driver.delete_all_cookies()
+                        # driver.delete_all_cookies()
 
                     except Exception:
                         logging.error(
