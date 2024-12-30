@@ -11,6 +11,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 from citabot.constants import LIVE_PROXIES
 from citabot.types import BrowserConfig, Browsers, CustomerProfile
@@ -21,6 +22,12 @@ class DriverBuilder:
         "recentDestinations": [{"id": "Save as PDF", "origin": "local", "account": ""}],
         "selectedDestinationId": "Save as PDF",
         "version": 2,
+    }
+    
+    # headers
+    CHROME_HEADERS = {
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
     }
 
     counter = 0
@@ -68,6 +75,13 @@ class DriverBuilder:
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--ignore-ssl-errors")
         options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        
+        # caps
+        caps = DesiredCapabilities.CHROME
+        caps["goog:loggingPrefs"] = {"performance": "ALL"}
+        
 
         if self.config.headless:
             options.add_argument("--headless")
@@ -174,7 +188,7 @@ class DriverBuilder:
                 )
 
             DriverBuilder.driver.maximize_window()
-            
+
             return DriverBuilder.driver
         except Exception as e:
             logging.error("Failed to build driver: %s", str(e))

@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from undetected_chromedriver import Chrome
+from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
+from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 
 __all__ = [
     "DocType",
@@ -226,6 +227,16 @@ class CustomerProfile:
 class InitPageTool(str, Enum):
     WATCHER = "watcher"
     FAST_FORWARD = "fast_forward"
+
+
+@dataclass
+class CycleCitaData(object):
+    driver: Chrome | Firefox
+    context: CustomerProfile
+    fast_forward_url: str
+    fast_forward_url2: str
+    operation_category: str
+    init_page_tool: InitPageTool = InitPageTool.FAST_FORWARD
 
 
 @dataclass

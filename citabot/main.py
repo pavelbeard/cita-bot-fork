@@ -2,13 +2,12 @@ import asyncio
 import io
 import logging
 import os
+import sys
 from typing import Any, Dict
 
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from selenium.webdriver.chrome.webdriver import WebDriver as Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.firefox.webdriver import WebDriver as Firefox
 from telegram import Update
 
 from citabot.constants import CYCLES
@@ -34,6 +33,7 @@ from citabot.tramites import (
 from citabot.types import (
     Browsers,
     CustomerProfile,
+    CycleCitaData,
     InitPageTool,
     OperationConfig,
     OperationType,
@@ -137,8 +137,21 @@ class CitaBot:
 
         for i in range(cycles):
             try:
+                if sys.platform == "linux":
+                    additional_options = {
+                        "user-data-dir": "/home/heavycream/.config/chromium",
+                        "profile-directory": "Default",
+                    }
+                elif sys.platform == "darwin":
+                    additional_options = {
+                        "user-data-dir": "/Users/pavelbeard/Library/Application Support/Google/Chrome",
+                        "profile-directory": "Profile 1",
+                    }
+
                 driver_builder = DriverBuilder(
-                    context=context, browser_type=Browsers.CHROME
+                    context=context,
+                    browser_type=Browsers.CHROME,
+                    additional_options=additional_options,
                 )
 
                 with driver_builder.create_driver() as driver:
@@ -148,13 +161,15 @@ class CitaBot:
                         f"🔄 Trying to catch cita en {context.province}. Attempt {i + 1}/{cycles}"
                     )
 
-                    result = await self.cycle_cita(
-                        driver,
-                        context,
-                        fast_forward_url,
-                        fast_forward_url2,
-                        config.category,
+                    cycle_cita_data = CycleCitaData(
+                        driver=driver,
+                        context=context,
+                        fast_forward_url=fast_forward_url,
+                        fast_forward_url2=fast_forward_url2,
+                        operation_category=config.category,
                     )
+
+                    result = await self.cycle_cita(data=cycle_cita_data)
 
                     if result:
                         logging.info("🎉 Application confirmed !!!!")
@@ -212,15 +227,14 @@ class CitaBot:
                 if not CitaBot.cancel_trigger or not CitaBot.close_trigger:
                     await random_wait_async(start=300, end=360)
 
-    async def _get_page(
-        self,
-        driver: Chrome | Firefox,
-        context: CustomerProfile,
-        fast_forward_url: str,
-        fast_forward_url2: str,
-        operation_category: str,
-        init_page_tool: InitPageTool = InitPageTool.FAST_FORWARD,
-    ):
+    async def _get_page(self, data: CycleCitaData) -> bool | None:
+        driver = data.driver
+        context = data.context
+        fast_forward_url = data.fast_forward_url
+        fast_forward_url2 = data.fast_forward_url2
+        operation_category = data.operation_category
+        init_page_tool = data.init_page_tool
+
         try:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
@@ -299,52 +313,19 @@ class CitaBot:
         except RejectionURLException:
             raise
 
-    async def get_page(
-        self,
-        driver: Chrome | Firefox,
-        context: CustomerProfile,
-        fast_forward_url: str,
-        fast_forward_url2: str,
-        operation_category: str,
-    ):
-        """Handles the initial page loading with different tools."""
-        if fast_forward_result := await self._get_page(
-            driver,
-            context,
-            fast_forward_url,
-            fast_forward_url2,
-            operation_category,
-            InitPageTool.FAST_FORWARD,
-        ):
-            return fast_forward_result
-
-        if watcher_result := await self._get_page(
-            driver,
-            context,
-            fast_forward_url,
-            fast_forward_url2,
-            operation_category,
-            InitPageTool.WATCHER,
-        ):
-            return watcher_result
-
-    async def cycle_cita(
-        self,
-        driver: Chrome | Firefox,
-        context: CustomerProfile,
-        fast_forward_url: str,
-        fast_forward_url2: str,
-        operation_category: str,
-    ):
+    async def cycle_cita(self, data: CycleCitaData) -> bool | None:
         """Executes the cycle of the bot."""
+        driver = data.driver
+        context = data.context
+
         # ZERO. Open the page
-        await self.get_page(
-            driver=driver,
-            context=context,
-            fast_forward_url=fast_forward_url,
-            fast_forward_url2=fast_forward_url2,
-            operation_category=operation_category,
-        )
+        """Handles the initial page loading with different tools."""
+        data.init_page_tool = InitPageTool.FAST_FORWARD
+        result = await self._get_page(data=data)
+
+        if not result:
+            data.init_page_tool = InitPageTool.WATCHER
+            result = await self._get_page(data=data)
 
         # 1. Instructions page:
         logging.info("[Step 1/6] Instructions page")

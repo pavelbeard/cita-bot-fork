@@ -24,6 +24,7 @@ from citabot import (
 from citabot.utils import open_json_file
 
 TOKEN = os.getenv("CITA_CATCHER_BOT")
+
 LVL_1_ROUTES, LVL_2_ROUTES = range(2)
 
 
