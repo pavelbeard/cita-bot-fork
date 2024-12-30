@@ -81,6 +81,8 @@ class CitaBot:
     close_trigger = False
     cancel_trigger = False
 
+    lock = asyncio.Lock()
+
     def __init__(self, context: CustomerProfile, update: Update = None):
         self.update = update
         self.context = context
@@ -148,46 +150,49 @@ class CitaBot:
                         "profile-directory": "Profile 1",
                     }
 
-                driver_builder = DriverBuilder(
-                    context=context,
-                    browser_type=Browsers.CHROME,
-                    additional_options=additional_options,
-                )
-
-                with driver_builder.create_driver() as driver:
-                    self.driver = driver
-                    logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
-                    logging.info(
-                        f"🔄 Trying to catch cita en {context.province}. Attempt {i + 1}/{cycles}"
-                    )
-
-                    cycle_cita_data = CycleCitaData(
-                        driver=driver,
+                async with self.lock:
+                    driver_builder = DriverBuilder(
                         context=context,
-                        fast_forward_url=fast_forward_url,
-                        fast_forward_url2=fast_forward_url2,
-                        operation_category=config.category,
+                        browser_type=Browsers.CHROME,
+                        additional_options=additional_options,
                     )
 
-                    result = await self.cycle_cita(data=cycle_cita_data)
-
-                    if result:
-                        logging.info("🎉 Application confirmed !!!!")
-                        await update.effective_message.reply_text(
-                            "🎉 CITA CONFIRMADA !!!!"
+                    with driver_builder.create_driver() as driver:
+                        self.driver = driver
+                        logging.info(f"\033[33m[Attempt: {i + 1}/{cycles}]\033[0m")
+                        logging.info(
+                            f"🔄 Trying to catch cita en {context.province.name}. Attempt {i + 1}/{cycles}"
                         )
 
-                        data = {**confirmed_cita}
-                        if data.get("screenshot"):
-                            image_file = io.BytesIO(data.get("screenshot"))
-                            image_file.name = "cita-confirmada.png"
-                            image_file.seek(0)
-                            await update.effective_message.reply_photo(photo=image_file)
-                        await update.effective_message.reply_text(
-                            f"Codigo de confirmacion: {data.get('code')}"
+                        cycle_cita_data = CycleCitaData(
+                            driver=driver,
+                            context=context,
+                            fast_forward_url=fast_forward_url,
+                            fast_forward_url2=fast_forward_url2,
+                            operation_category=config.category,
                         )
 
-                        return True
+                        result = await self.cycle_cita(data=cycle_cita_data)
+
+                        if result:
+                            logging.info("🎉 Application confirmed !!!!")
+                            await update.effective_message.reply_text(
+                                "🎉 CITA CONFIRMADA !!!!"
+                            )
+
+                            data = {**confirmed_cita}
+                            if data.get("screenshot"):
+                                image_file = io.BytesIO(data.get("screenshot"))
+                                image_file.name = "cita-confirmada.png"
+                                image_file.seek(0)
+                                await update.effective_message.reply_photo(
+                                    photo=image_file
+                                )
+                            await update.effective_message.reply_text(
+                                f"Codigo de confirmacion: {data.get('code')}"
+                            )
+
+                            return True
 
             except TooManyRequestsException:
                 logging.info("[429] Too many requests")
@@ -225,7 +230,7 @@ class CitaBot:
                 raise
             finally:
                 if not CitaBot.cancel_trigger or not CitaBot.close_trigger:
-                    await random_wait_async(start=300, end=360)
+                    await random_wait_async(start=120, end=360)
 
     async def _get_page(self, data: CycleCitaData) -> bool | None:
         driver = data.driver
@@ -239,12 +244,26 @@ class CitaBot:
             if init_page_tool == InitPageTool.WATCHER:
                 watcher = Watcher(driver)
 
+                driver.delete_all_cookies()
+                driver.set_page_load_timeout(300 if context.first_load else 50)
+                await random_wait_async(start=1, end=5)
                 await watcher.open_extranjeria()
                 await random_wait_async(start=1, end=5)
+
+                if context.first_load:
+                    try:
+                        driver.execute_script("window.localStorage.clear();")
+                        driver.execute_script("window.sessionStorage.clear();")
+                    except Exception as e:
+                        logging.error(e)
+                        pass
+
                 await watcher.select_city(context.province.value, operation_category)
                 await random_wait_async(start=2, end=4)
-                await watcher.accept_cookie()
-                await random_wait_async(start=1, end=3.5)
+
+                # await watcher.accept_cookie()
+                # await random_wait_async(start=1, end=3.5)
+
                 await watcher.select_tramite(context.operation_code.value)
 
                 logging.info("[Watcher] Loaded initial page.")
@@ -276,28 +295,28 @@ class CitaBot:
                         raise FastForwardInaccessibleException
 
                     # accept cookies
-                    try:
-                        __cookie_accept_button = {
-                            "by": By.ID,
-                            "value": "cookie_action_close_header",
-                        }
+                    # try:
+                    #     __cookie_accept_button = {
+                    #         "by": By.ID,
+                    #         "value": "cookie_action_close_header",
+                    #     }
 
-                        if not wait_for_element(
-                            self.driver, tuple(__cookie_accept_button.values())
-                        ):
-                            raise Exception
+                    #     if not wait_for_element(
+                    #         self.driver, tuple(__cookie_accept_button.values())
+                    #     ):
+                    #         raise Exception
 
-                        cookie_accept_button = self.driver.find_element(
-                            **__cookie_accept_button
-                        )
-                        cookie_accept_button.send_keys(Keys.ENTER)
+                    #     cookie_accept_button = self.driver.find_element(
+                    #         **__cookie_accept_button
+                    #     )
+                    #     cookie_accept_button.send_keys(Keys.ENTER)
 
-                        # driver.delete_all_cookies()
+                    #     # driver.delete_all_cookies()
 
-                    except Exception:
-                        logging.error(
-                            "[500] WebDriverException error. Accepting cookies didn't work."
-                        )
+                    # except Exception:
+                    #     logging.error(
+                    #         "[500] WebDriverException error. Accepting cookies didn't work."
+                    #     )
 
                     context.first_load = False
 
