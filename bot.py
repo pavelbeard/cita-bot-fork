@@ -224,7 +224,9 @@ async def request_appointment(
         asyncio.tasks.all_tasks(), lambda task: task.get_name() == province.name
     )
     if not province_task:
-        await update.effective_message.reply_text("Bot started.")
+        await update.effective_message.reply_text(
+            "Bot comenzando en la provincia de {}".format(province.name)
+        )
         task_builder = CitaBot(context=customer, update=update)
         asyncio.create_task(task_builder.start(cycles=200), name=province.name)
     else:
