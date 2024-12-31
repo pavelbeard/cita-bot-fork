@@ -152,20 +152,19 @@ class CitaBot:
 
                 async with self.lock:
                     # With closing driver
-                    # driver_builder = DriverBuilder(
-                    #     context=context,
-                    #     browser_type=Browsers.CHROME,
-                    #     additional_options=additional_options,
-                    # )
-
-                    # with driver_builder.create_driver() as driver:
-                    
-                    # Without closing driver, only close while exception
-                    with DriverBuilder(
+                    driver_builder = DriverBuilder(
                         context=context,
                         browser_type=Browsers.CHROME,
                         additional_options=additional_options,
-                    ) as driver:
+                    )
+
+                    with driver_builder.create_driver() as driver:
+                        # Without closing driver, only close while exception
+                        # with DriverBuilder(
+                        #     context=context,
+                        #     browser_type=Browsers.CHROME,
+                        #     additional_options=additional_options,
+                        # ) as driver:
                         self.driver = driver
                         current_task = asyncio.tasks.current_task().get_name()
                         logging.info(

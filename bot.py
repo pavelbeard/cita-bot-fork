@@ -91,13 +91,6 @@ async def data_json_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # COMMANDS
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Welcome message"""
-    # await update.message.reply_text(
-    #     "Este bot se destina a ayudar a los extranjeros a solicitar citas de asilo\n"
-    #     + "en las oficinas de extranjeria de manera GRATIS, como lo tenga que ser.",
-    #     reply_markup=keyboard,
-    # )
-
-    # return LVL_1_ROUTES
     await update.effective_message.reply_text(
         "Este bot se destina a ayudar a los extranjeros a solicitar citas de asilo\n"
         + "en las oficinas de extranjeria de manera GRATIS, como lo tenga que ser.",
