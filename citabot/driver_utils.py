@@ -198,9 +198,11 @@ class DriverBuilder:
     def create_driver(self):
         """Create a new driver instance."""
         try:
-            driver = self.build()
-            self.driver = DriverBuilder.driver
-            yield driver
+            if not self.driver:
+                driver = self.build()
+                self.driver = DriverBuilder.driver
+                yield driver
+            
         finally:
             if self.driver:
                 try:
@@ -209,20 +211,15 @@ class DriverBuilder:
                     logging.error("Error while closing driver: %s", str(e))
 
     def __enter__(self):
-        if DriverBuilder.counter % 3 == 0:
-            logging.info("Building new driver...")
-            return self.build()
+        if not DriverBuilder.driver:
+            DriverBuilder.driver = self.build()
+            return DriverBuilder.driver
         else:
             return DriverBuilder.driver
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if DriverBuilder.driver:
-            try:
-                if DriverBuilder.counter != 0 and DriverBuilder.counter % 3 == 0:
-                    DriverBuilder.driver.quit()
-                else:
-                    logging.info("Persisting driver every 3 cycles")
-            except Exception as e:
-                logging.error("Error while closing driver: %s", str(e))
-
-            DriverBuilder.counter += 1
+        if exc_type is not None:
+            DriverBuilder.driver.quit()
+        
+        return True
+                
