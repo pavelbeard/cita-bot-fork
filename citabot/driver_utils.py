@@ -198,11 +198,9 @@ class DriverBuilder:
     def create_driver(self):
         """Create a new driver instance."""
         try:
-            if not self.driver:
-                driver = self.build()
-                self.driver = DriverBuilder.driver
-                yield driver
-            
+            driver = self.build()
+            self.driver = DriverBuilder.driver
+            yield driver
         finally:
             if self.driver:
                 try:
